@@ -1,0 +1,14 @@
+{
+	"name": "Inucs Appliance Registry development container",
+	"image": "mcr.microsoft.com/devcontainers/base:noble",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"Anthropic.claude-code"
+			]
+		}
+	}
+}

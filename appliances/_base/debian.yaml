@@ -1,0 +1,55 @@
+# Base configuration fragment for Debian appliances
+# Include this in your appliance with YAML anchors or copy relevant sections
+
+image:
+  distribution: debian
+  release: bookworm
+  variant: minbase
+
+source:
+  downloader: debootstrap
+  url: http://deb.debian.org/debian
+
+packages:
+  manager: apt
+  update: true
+  cleanup: true
+
+# Common packages for most appliances
+common_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - apt-transport-https
+  - tzdata
+  - logrotate
+
+# For services
+service_packages:
+  - systemd
+  - dbus
+
+# For networking
+network_packages:
+  - iproute2
+  - iputils-ping
+  - dnsutils
+  - netcat-openbsd
+
+# Common actions
+common_actions:
+  cleanup:
+    trigger: post-packages
+    action: |-
+      # Clean up package cache
+      apt-get clean
+      rm -rf /var/lib/apt/lists/*
+      rm -rf /tmp/*
+      rm -rf /var/tmp/*
+
+  disable_services:
+    trigger: post-packages
+    action: |-
+      # Disable unnecessary services
+      systemctl disable apt-daily.timer || true
+      systemctl disable apt-daily-upgrade.timer || true

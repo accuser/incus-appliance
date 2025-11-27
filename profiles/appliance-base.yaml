@@ -1,0 +1,36 @@
+# Base profile for all appliances
+# Apply with: incus launch appliance:myapp my-instance --profile default --profile appliance-base
+
+description: Base configuration for appliance instances
+
+config:
+  # Boot settings
+  boot.autostart: "true"
+
+  # Security
+  security.nesting: "false"
+  security.privileged: "false"
+
+  # Limits (adjust based on appliance requirements)
+  limits.cpu: "2"
+  limits.memory: "512MB"
+
+  # Cloud-init
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: false
+    package_upgrade: false
+
+devices:
+  # Root disk
+  root:
+    path: /
+    pool: default
+    type: disk
+    size: 10GB
+
+  # Ethernet
+  eth0:
+    name: eth0
+    network: incusbr0
+    type: nic

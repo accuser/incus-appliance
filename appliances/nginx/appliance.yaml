@@ -1,0 +1,69 @@
+# appliance.yaml - Appliance metadata
+name: nginx
+version: "1.0.0"
+description: "Lightweight reverse proxy and web server appliance"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: alpine
+  release: "3.20"
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 128MB
+  min_disk: 256MB
+  recommended_memory: 256MB
+  recommended_disk: 1GB
+
+# Exposed ports (informational)
+ports:
+  - port: 80
+    protocol: tcp
+    description: HTTP
+  - port: 443
+    protocol: tcp
+    description: HTTPS
+
+# Volumes that should be persisted
+volumes:
+  - path: /etc/nginx/conf.d
+    description: "Site configurations"
+  - path: /var/log/nginx
+    description: "Log files"
+  - path: /usr/share/nginx/html
+    description: "Static content"
+
+# Environment variables supported via cloud-init
+environment:
+  - name: NGINX_WORKER_PROCESSES
+    default: auto
+    description: "Number of worker processes"
+
+# Health check command
+healthcheck:
+  command: "curl -sf http://localhost/health || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - web
+  - proxy
+  - reverse-proxy
+
+# Related appliances
+see_also:
+  - traefik
+  - caddy

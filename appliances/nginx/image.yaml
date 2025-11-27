@@ -1,0 +1,105 @@
+# image.yaml - Distrobuilder template for nginx appliance
+image:
+  distribution: alpine
+  release: "3.20"
+  description: "Nginx reverse proxy appliance"
+  architecture: amd64
+
+source:
+  downloader: alpinelinux-http
+  url: https://dl-cdn.alpinelinux.org/alpine/
+  keys:
+    - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
+
+targets:
+  incus:
+    vm:
+      filesystem: ext4
+      size: 1GiB
+
+packages:
+  manager: apk
+  update: true
+  cleanup: true
+  sets:
+    - packages:
+        - nginx
+        - ca-certificates
+        - curl
+        - tzdata
+        - logrotate
+      action: install
+
+files:
+  - path: /etc/nginx/nginx.conf
+    generator: copy
+    source: files/nginx.conf
+    mode: "0644"
+
+  - path: /etc/nginx/conf.d/default.conf
+    generator: copy
+    source: files/default.conf
+    mode: "0644"
+
+  - path: /usr/share/nginx/html/index.html
+    generator: copy
+    source: files/index.html
+    mode: "0644"
+
+  - path: /etc/motd
+    generator: dump
+    content: |-
+      ╔══════════════════════════════════════════╗
+      ║  Nginx Appliance                         ║
+      ║  Incus Appliance Registry                ║
+      ╠══════════════════════════════════════════╣
+      ║  Config: /etc/nginx/conf.d/              ║
+      ║  Logs:   /var/log/nginx/                 ║
+      ║  Status: nginx -t && nginx -s reload     ║
+      ╚══════════════════════════════════════════╝
+    mode: "0644"
+
+  - path: /etc/logrotate.d/nginx
+    generator: dump
+    content: |-
+      /var/log/nginx/*.log {
+          daily
+          missingok
+          rotate 14
+          compress
+          delaycompress
+          notifempty
+          create 0640 nginx nginx
+          sharedscripts
+          postrotate
+              /usr/sbin/nginx -s reopen
+          endscript
+      }
+    mode: "0644"
+
+actions:
+  - trigger: post-unpack
+    action: |-
+      # Ensure nginx directories exist
+      mkdir -p /var/log/nginx
+      mkdir -p /var/cache/nginx
+      mkdir -p /run/nginx
+
+  - trigger: post-packages
+    action: |-
+      # Enable nginx at boot
+      rc-update add nginx default
+
+      # Create nginx user if not exists
+      adduser -D -H -s /sbin/nologin nginx 2>/dev/null || true
+
+  - trigger: post-files
+    action: |-
+      # Validate nginx configuration
+      nginx -t
+
+      # Set permissions
+      chown -R nginx:nginx /var/log/nginx
+      chown -R nginx:nginx /var/cache/nginx
+      chown -R root:root /etc/nginx
+      chmod -R 755 /usr/share/nginx/html

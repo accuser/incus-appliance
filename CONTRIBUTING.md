@@ -1,0 +1,514 @@
+# Contributing to Incus Appliance Registry
+
+Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
+
+## Ways to Contribute
+
+- **Add new appliances** — Create definitions for useful applications
+- **Improve existing appliances** — Optimize, update, or enhance current appliances
+- **Fix bugs** — Report or fix issues in build scripts or templates
+- **Improve documentation** — Clarify guides, add examples
+- **Share feedback** — Suggest improvements or new features
+
+## Getting Started
+
+### Prerequisites
+
+- Git
+- Incus (>= 6.0)
+- distrobuilder
+- Basic shell scripting knowledge
+- Familiarity with YAML
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/incus-appliance
+cd incus-appliance
+
+# Verify you can build
+make validate
+make build-nginx
+
+# Test locally
+make serve &
+incus remote add test https://localhost:8443 --protocol simplestreams --accept-certificate
+make test-nginx
+```
+
+## Contributing an Appliance
+
+### 1. Choose an Application
+
+Good candidates for appliances:
+
+✅ **Good Choices**
+- Single-purpose services (nginx, redis, postgres)
+- Development tools (git server, CI runners)
+- Network services (DNS, DHCP, VPN)
+- Monitoring tools (Prometheus, Grafana)
+- Databases and caches
+
+❌ **Not Suitable**
+- Desktop applications
+- Multi-purpose systems
+- Applications requiring GUI
+- Highly stateful systems without clear data paths
+
+### 2. Create the Appliance
+
+```bash
+# Create directory structure
+mkdir -p appliances/myapp/{files,profiles}
+
+# Create required files
+touch appliances/myapp/appliance.yaml
+touch appliances/myapp/image.yaml
+touch appliances/myapp/README.md
+```
+
+### 3. Write Templates
+
+See [docs/creating-appliances.md](docs/creating-appliances.md) for detailed guidance.
+
+Minimal `appliance.yaml`:
+```yaml
+name: myapp
+version: "1.0.0"
+description: "Clear, concise description"
+base:
+  distribution: alpine
+  release: "3.20"
+```
+
+Minimal `image.yaml`:
+```yaml
+image:
+  distribution: alpine
+  release: "3.20"
+  description: "MyApp appliance"
+
+source:
+  downloader: alpinelinux-http
+  url: https://dl-cdn.alpinelinux.org/alpine/
+
+packages:
+  manager: apk
+  update: true
+  sets:
+    - packages: [myapp]
+      action: install
+
+actions:
+  - trigger: post-packages
+    action: |-
+      rc-update add myapp default
+```
+
+### 4. Test Your Appliance
+
+```bash
+# Validate
+make validate
+
+# Build
+make build-myapp
+
+# Test
+make serve &
+make test-myapp
+```
+
+### 5. Document
+
+Write a comprehensive README.md:
+
+```markdown
+# MyApp Appliance
+
+Brief description of what the appliance does.
+
+## Quick Start
+
+\`\`\`bash
+incus launch appliance:myapp my-instance
+\`\`\`
+
+## Configuration
+
+How to configure the appliance...
+
+## Networking
+
+Which ports are used...
+
+## Persistent Data
+
+Which directories should be persisted...
+
+## Common Tasks
+
+Typical operations...
+```
+
+### 6. Submit Pull Request
+
+```bash
+# Create branch
+git checkout -b add-myapp-appliance
+
+# Commit changes
+git add appliances/myapp/
+git commit -m "Add myapp appliance"
+
+# Push and create PR
+git push origin add-myapp-appliance
+gh pr create --title "Add myapp appliance"
+```
+
+## Code Standards
+
+### Shell Scripts
+
+- Use `#!/usr/bin/env bash`
+- Start with `set -euo pipefail`
+- Include comments for complex logic
+- Use meaningful variable names
+- Pass shellcheck
+
+Example:
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build a single appliance
+APPLIANCE="${1:?Usage: $0 <appliance-name>}"
+
+if [[ ! -d "appliances/${APPLIANCE}" ]]; then
+  echo "Error: Appliance not found"
+  exit 1
+fi
+```
+
+### YAML Files
+
+- Use 2-space indentation
+- No trailing whitespace
+- Quote strings when ambiguous
+- Sort keys alphabetically where sensible
+- Pass yamllint
+
+Example:
+```yaml
+name: myapp
+version: "1.0.0"  # Quoted to prevent interpretation as float
+
+packages:
+  manager: apk
+  sets:
+    - action: install
+      packages:
+        - package-a
+        - package-b
+        - package-c
+```
+
+### Documentation
+
+- Use clear, concise language
+- Include code examples
+- Assume readers are familiar with Incus basics
+- Link to related documentation
+- Spell-check and grammar-check
+
+## Appliance Guidelines
+
+### Security
+
+1. **No default passwords**
+   ```yaml
+   # ❌ Bad
+   actions:
+     - trigger: post-packages
+       action: echo "root:password123" | chpasswd
+
+   # ✅ Good - use cloud-init
+   # Document in README how to set password via user-data
+   ```
+
+2. **Run as non-root**
+   ```yaml
+   actions:
+     - trigger: post-packages
+       action: |-
+         adduser -D -H -s /sbin/nologin myapp
+         rc-update add myapp default
+   ```
+
+3. **Minimal packages**
+   ```yaml
+   # Only install what's needed
+   packages:
+     sets:
+       - packages: [myapp, ca-certificates]
+         action: install
+   ```
+
+### Size Optimization
+
+1. **Prefer Alpine**
+   - Use Alpine Linux when possible
+   - Results in 5-10x smaller images
+
+2. **Clean package cache**
+   ```yaml
+   packages:
+     cleanup: true  # Always enable
+   ```
+
+3. **Remove build dependencies**
+   ```yaml
+   packages:
+     sets:
+       - packages: [build-base, cmake]
+         action: install
+       # ... build software ...
+       - packages: [build-base, cmake]
+         action: remove
+   ```
+
+### Documentation
+
+Every appliance must include:
+
+1. **appliance.yaml** — Metadata
+2. **image.yaml** — Build template
+3. **README.md** with:
+   - Quick start example
+   - Configuration instructions
+   - Networking details
+   - Persistent data locations
+   - Common tasks
+   - Troubleshooting
+
+### Testing
+
+Before submitting, verify:
+
+- [ ] Template validates: `make validate`
+- [ ] Image builds successfully: `make build-myapp`
+- [ ] Instance launches: `incus launch test:myapp test-instance`
+- [ ] Service starts correctly
+- [ ] Health check passes: `make test-myapp`
+- [ ] Documentation is clear and accurate
+- [ ] No security issues (shellcheck, yamllint)
+
+## Pull Request Process
+
+### Before Submitting
+
+1. Test your changes thoroughly
+2. Update documentation
+3. Run validation: `make validate`
+4. Check for trailing whitespace
+5. Rebase on latest main
+
+### PR Description
+
+Include:
+
+- **What**: What does this PR add/fix?
+- **Why**: Why is this change needed?
+- **Testing**: How was it tested?
+- **Screenshots**: If applicable
+
+Example:
+```markdown
+## Add Redis Appliance
+
+Adds a Redis appliance based on Alpine Linux.
+
+### Features
+- Redis 7.2
+- Persistence enabled by default
+- Health check included
+- Minimal size (~30MB)
+
+### Testing
+- Built successfully on amd64
+- Launches and responds to PING
+- Passes health check
+- Documentation verified
+```
+
+### Review Process
+
+1. Automated checks run (validation, linting)
+2. Maintainer reviews code and tests
+3. Feedback addressed
+4. Approved and merged
+
+## Commit Messages
+
+Use conventional commits format:
+
+```
+type(scope): brief description
+
+Longer description if needed
+
+Closes #123
+```
+
+Types:
+- `feat`: New appliance or feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Code style (formatting, etc.)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+Examples:
+```
+feat(nginx): add nginx appliance
+
+Adds a production-ready nginx appliance based on Alpine Linux.
+Includes reverse proxy configuration and health checks.
+
+feat(scripts): add multi-arch build support
+
+fix(nginx): correct health check endpoint
+
+docs(readme): improve quick start guide
+
+chore: update dependencies
+```
+
+## Code Review Guidelines
+
+### For Reviewers
+
+- Be constructive and respectful
+- Test the appliance yourself
+- Check security implications
+- Verify documentation completeness
+- Suggest improvements, don't demand perfection
+
+### For Contributors
+
+- Respond to feedback promptly
+- Don't take criticism personally
+- Ask questions if unclear
+- Update based on feedback
+- Thank reviewers for their time
+
+## Building Community
+
+### Be Welcoming
+
+- Assume good intentions
+- Be patient with newcomers
+- Offer help and guidance
+- Celebrate contributions
+
+### Code of Conduct
+
+We follow the [Contributor Covenant](https://www.contributor-covenant.org/):
+
+- Be respectful and inclusive
+- Accept constructive criticism gracefully
+- Focus on what's best for the community
+- Show empathy towards others
+
+## Getting Help
+
+### Questions
+
+- Check [existing documentation](docs/)
+- Search [closed issues](https://github.com/yourusername/incus-appliance/issues?q=is%3Aissue+is%3Aclosed)
+- Open a new issue with the `question` label
+
+### Bugs
+
+Report bugs by opening an issue:
+
+1. Clear, descriptive title
+2. Steps to reproduce
+3. Expected vs actual behavior
+4. System information (Incus version, OS, etc.)
+5. Relevant logs
+
+### Feature Requests
+
+Suggest features by opening an issue:
+
+1. Clear description of the feature
+2. Use case / motivation
+3. Example implementation (optional)
+
+## Development Tips
+
+### Fast Iteration
+
+```bash
+# Build and test in one command
+make build-myapp && make test-myapp
+
+# Watch for changes (requires entr)
+ls appliances/myapp/* | entr -s 'make build-myapp'
+```
+
+### Debugging Builds
+
+```bash
+# Verbose distrobuilder output
+sudo distrobuilder build-incus \
+  appliances/myapp/image.yaml \
+  --debug
+
+# Inspect rootfs
+mkdir /tmp/rootfs
+sudo mount -t squashfs \
+  .build/myapp/amd64/rootfs.squashfs \
+  /tmp/rootfs
+ls -la /tmp/rootfs
+sudo umount /tmp/rootfs
+```
+
+### Testing in Container
+
+```bash
+# Launch and interact
+incus launch test:myapp debug-instance
+incus exec debug-instance -- sh
+
+# Copy files in/out
+incus file push test.conf debug-instance/etc/
+incus file pull debug-instance/var/log/app.log ./
+
+# Don't forget to clean up
+incus delete -f debug-instance
+```
+
+## Recognition
+
+Contributors are recognized in:
+
+- README.md contributors section
+- Release notes for significant contributions
+- Special recognition for major features
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.
+
+## Questions?
+
+Don't hesitate to ask questions in:
+- GitHub Issues
+- GitHub Discussions
+- Pull Request comments
+
+Thank you for contributing! 🎉

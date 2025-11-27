@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx Appliance</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 {
+            color: #009639;
+            border-bottom: 2px solid #009639;
+            padding-bottom: 10px;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Nginx Appliance</h1>
+    <p>Welcome to your Nginx appliance from the <strong>Incus Appliance Registry</strong>.</p>
+
+    <div class="info-box">
+        <strong>Status:</strong> Nginx is running successfully!
+    </div>
+
+    <h2>Quick Start</h2>
+    <p>Add your site configurations to <code>/etc/nginx/conf.d/</code>:</p>
+    <pre>incus file push mysite.conf my-nginx/etc/nginx/conf.d/
+incus exec my-nginx -- nginx -s reload</pre>
+
+    <h2>Useful Commands</h2>
+    <ul>
+        <li><strong>Test config:</strong> <code>incus exec my-nginx -- nginx -t</code></li>
+        <li><strong>Reload:</strong> <code>incus exec my-nginx -- nginx -s reload</code></li>
+        <li><strong>View logs:</strong> <code>incus exec my-nginx -- tail -f /var/log/nginx/access.log</code></li>
+        <li><strong>Health check:</strong> <code>incus exec my-nginx -- curl -s localhost/health</code></li>
+    </ul>
+
+    <h2>Configuration Locations</h2>
+    <ul>
+        <li>Main config: <code>/etc/nginx/nginx.conf</code></li>
+        <li>Site configs: <code>/etc/nginx/conf.d/</code></li>
+        <li>Logs: <code>/var/log/nginx/</code></li>
+        <li>Web root: <code>/usr/share/nginx/html/</code></li>
+    </ul>
+</body>
+</html>

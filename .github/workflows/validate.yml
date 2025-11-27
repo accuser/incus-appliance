@@ -1,0 +1,62 @@
+name: Validate Templates
+
+on:
+  pull_request:
+    paths:
+      - 'appliances/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate Appliance Templates
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint shellcheck
+
+      - name: Validate YAML files
+        run: make lint || true
+
+      - name: Validate templates
+        run: make validate
+
+      - name: Check shell scripts
+        run: |
+          find scripts -type f -name "*.sh" -exec shellcheck {} +
+
+  build-test:
+    runs-on: ubuntu-latest
+    name: Test Build Process
+    needs: validate
+
+    strategy:
+      matrix:
+        appliance: [nginx]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install distrobuilder
+        run: |
+          sudo snap install distrobuilder --classic
+
+      - name: Build appliance
+        run: |
+          make build-${{ matrix.appliance }}
+
+      - name: List registry contents
+        run: |
+          sudo incus-simplestreams list registry || echo "Registry listing not available"
+          ls -lah registry/
+          find registry -type f -ls

@@ -1,0 +1,8 @@
+registry/
+.build/
+.cache/
+.certs/
+.claude/settings.local.json
+*.swp
+*.swo
+*~

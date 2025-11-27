@@ -1,0 +1,53 @@
+# Base configuration fragment for Alpine Linux appliances
+# Include this in your appliance with YAML anchors or copy relevant sections
+
+image:
+  distribution: alpine
+  release: "3.20"
+
+source:
+  downloader: alpinelinux-http
+  url: https://dl-cdn.alpinelinux.org/alpine/
+  keys:
+    - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
+
+packages:
+  manager: apk
+  update: true
+  cleanup: true
+
+# Common packages for most appliances
+common_packages:
+  - ca-certificates
+  - curl
+  - tzdata
+  - logrotate
+
+# For services that need networking
+network_packages:
+  - bind-tools
+  - iproute2
+  - iputils
+
+# For services that need SSL/TLS
+ssl_packages:
+  - openssl
+  - ca-certificates
+
+# Common actions
+common_actions:
+  create_directories:
+    trigger: post-unpack
+    action: |-
+      # Create common directories
+      mkdir -p /var/log
+      mkdir -p /var/run
+      mkdir -p /tmp
+
+  cleanup:
+    trigger: post-packages
+    action: |-
+      # Clean up package cache
+      apk cache clean
+      rm -rf /var/cache/apk/*
+      rm -rf /tmp/*
