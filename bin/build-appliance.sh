@@ -66,7 +66,7 @@ fi
 
 # Build with distrobuilder
 echo "==> Running distrobuilder..."
-sudo /go/bin/distrobuilder build-incus image.yaml \
+sudo distrobuilder build-incus image.yaml \
   --type=split \
   --disable-overlay \
   -o image.architecture="${ARCH}" \
