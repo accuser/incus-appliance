@@ -98,6 +98,9 @@ actions:
       #!/bin/sh
       set -eux
 
+      # Ensure nginx runtime directory exists for config test
+      mkdir -p /run/nginx
+
       # Validate nginx configuration
       nginx -t
 
