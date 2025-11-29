@@ -56,7 +56,7 @@ for i in {1..60}; do
   if incus exec "$VM_NAME" -- cloud-init status --wait 2>/dev/null; then
     break
   fi
-  if [ $i -eq 60 ]; then
+  if [ "$i" -eq 60 ]; then
     echo "Error: VM failed to become ready"
     exit 1
   fi

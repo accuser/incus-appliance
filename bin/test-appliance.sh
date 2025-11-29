@@ -48,7 +48,7 @@ fi
 
 # Wait for instance to be ready
 echo "==> Waiting for instance to start..."
-for i in {1..30}; do
+for _i in {1..30}; do
   STATE=$(incus info "$INSTANCE_NAME" | grep '^Status:' | awk '{print $2}')
   if [[ "$STATE" == "RUNNING" ]]; then
     break

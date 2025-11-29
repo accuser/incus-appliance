@@ -61,8 +61,8 @@ update_package_lists() {
 
 # Install prerequisite packages
 install_prerequisites() {
-    log_info "Installing prerequisites (ca-certificates, curl, gnupg)..."
-    if ! apt-get install -y ca-certificates curl gnupg; then
+    log_info "Installing prerequisites (ca-certificates, curl, gnupg, shellcheck)..."
+    if ! apt-get install -y ca-certificates curl gnupg shellcheck; then
         log_error "Failed to install prerequisite packages"
         exit 1
     fi

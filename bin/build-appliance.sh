@@ -80,13 +80,6 @@ if [[ ! -f "incus.tar.xz" ]] || [[ ! -f "rootfs.squashfs" ]]; then
   exit 1
 fi
 
-# Read appliance metadata for alias
-if [[ -f "${APPLIANCE_DIR}/appliance.yaml" ]]; then
-  VERSION=$(grep '^version:' "${APPLIANCE_DIR}/appliance.yaml" | awk '{print $2}' | tr -d '"')
-else
-  VERSION="latest"
-fi
-
 # Add to simplestreams registry
 echo "==> Adding to SimpleStreams registry..."
 mkdir -p "$REGISTRY_DIR"
