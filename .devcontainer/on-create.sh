@@ -167,8 +167,8 @@ install_packages() {
         exit 1
     fi
 
-    log_info "Installing gh and incus-client..."
-    if ! apt-get install -y gh incus-client; then
+    log_info "Installing gh, incus-client, and incus-extra..."
+    if ! apt-get install -y gh incus-client incus-extra; then
         log_error "Failed to install packages"
         exit 1
     fi
