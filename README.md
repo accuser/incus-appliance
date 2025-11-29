@@ -87,11 +87,14 @@ incus-appliance/
 │       ├── image.yaml        # Distrobuilder template
 │       ├── files/            # Files to embed
 │       └── README.md         # Documentation
-├── scripts/             # Build and test scripts
+├── bin/                 # VM runtime scripts (sparse checkout)
 │   ├── build-appliance.sh   # Build single appliance
-│   ├── serve-local.sh       # Local test server
 │   ├── validate.sh          # Validate templates
 │   └── test-appliance.sh    # Test launcher
+├── scripts/             # Host orchestration scripts
+│   ├── setup-build-vm.sh    # Create build VM
+│   ├── build-remote.sh      # Build using VM
+│   └── serve-local.sh       # Local test server
 ├── registry/            # Generated SimpleStreams registry (gitignored)
 ├── Makefile            # Build automation
 └── README.md           # This file
@@ -455,15 +458,23 @@ A: Use cloud-init user-data or Incus profiles to inject secrets at launch time. 
 
 ## Contributing
 
-Contributions welcome! See [docs/creating-appliances.md](docs/creating-appliances.md) for guidelines.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+This project uses **GitHub Flow** for all changes:
+
+1. Create a feature branch from `main`
+2. Make changes and commit
+3. Create a Pull Request
+4. Ensure CI checks pass
+5. Merge using "Squash and merge"
 
 ### Adding a New Appliance
 
-1. Fork the repository
+1. Create feature branch: `git checkout -b feature/add-myapp`
 2. Create appliance definition in `appliances/<name>/`
 3. Add `appliance.yaml`, `image.yaml`, and `README.md`
 4. Test: `make build-<name> && make test-<name>`
-5. Submit pull request
+5. Submit pull request with clear description
 
 ## License
 
