@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'appliances/**'
+      - 'bin/**'
       - 'scripts/**'
       - '.github/workflows/**'
   push:
@@ -32,7 +33,7 @@ jobs:
 
       - name: Check shell scripts
         run: |
-          find scripts -type f -name "*.sh" -exec shellcheck {} +
+          find bin scripts -type f -name "*.sh" -exec shellcheck {} +
 
   build-test:
     runs-on: ubuntu-latest
