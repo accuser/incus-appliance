@@ -73,6 +73,9 @@ files:
 actions:
   - trigger: post-unpack
     action: |-
+      #!/bin/sh
+      set -eux
+
       # Ensure nginx directories exist
       mkdir -p /var/log/nginx
       mkdir -p /var/cache/nginx
@@ -80,6 +83,9 @@ actions:
 
   - trigger: post-packages
     action: |-
+      #!/bin/sh
+      set -eux
+
       # Enable nginx at boot
       rc-update add nginx default
 
@@ -88,6 +94,9 @@ actions:
 
   - trigger: post-files
     action: |-
+      #!/bin/sh
+      set -eux
+
       # Validate nginx configuration
       nginx -t
 
