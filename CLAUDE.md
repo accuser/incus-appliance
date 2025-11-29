@@ -12,17 +12,44 @@ The project generates a static SimpleStreams registry (JSON + image files) that 
 
 ### Building Appliances
 
-**Note**: All build commands require `sudo` because distrobuilder needs root access for chroot operations.
+**IMPORTANT**: `distrobuilder` requires kernel-level access and **cannot run in containers** (including Docker and Incus system containers). Builds must run either:
+1. **On bare metal** with `sudo` (if you have direct host access)
+2. **In a VM** (recommended for development environments like devcontainers)
+
+#### Option 1: Building with a VM (Recommended for Containers/Devcontainers)
+
+If you're running in a container or devcontainer, use the build VM approach:
+
+```bash
+# One-time setup: Create and configure build VM
+./scripts/setup-build-vm.sh
+
+# Build a single appliance using the VM
+./scripts/build-remote.sh <appliance-name> [architecture]
+./scripts/build-remote.sh nginx
+./scripts/build-remote.sh nginx arm64
+
+# Build all appliances using the VM
+./scripts/build-all-remote.sh [architecture]
+```
+
+The VM automatically mounts your project directory, so built images appear in your local `registry/` directory.
+
+See [docs/vm-build-setup.md](docs/vm-build-setup.md) for detailed VM setup and usage.
+
+#### Option 2: Building on Bare Metal
+
+If running directly on a host with Incus installed:
 
 ```bash
 # Build a single appliance
-sudo ./scripts/build-appliance.sh <appliance-name> [architecture]
+sudo ./bin/build-appliance.sh <appliance-name> [architecture]
 # Or via Makefile
 make build-nginx                    # Build nginx for current arch
 make build-nginx ARCH=arm64        # Build for specific arch
 
 # Build all appliances
-sudo ./scripts/build-all.sh
+sudo ./bin/build-all.sh
 # Or via Makefile
 make build                         # Build all for current arch
 make build-all-arch               # Build all for amd64 and arm64
@@ -32,18 +59,18 @@ make build-all-arch               # Build all for amd64 and arm64
 
 ```bash
 # Validate all appliance templates
-./scripts/validate.sh
+./bin/validate.sh
 make validate
 
 # Lint YAML files (requires yamllint)
 make lint
 
 # Test single appliance
-./scripts/test-appliance.sh <appliance-name> [remote-name]
+./bin/test-appliance.sh <appliance-name> [remote-name]
 make test-nginx
 
 # Test all appliances
-./scripts/test-all.sh
+./bin/test-all.sh
 make test
 ```
 
@@ -185,8 +212,8 @@ mkdir -p appliances/myapp/{files,profiles}
 # 5. Create README.md documenting usage
 
 # 6. Build and test
-sudo ./scripts/build-appliance.sh myapp
-./scripts/test-appliance.sh myapp appliance-test
+sudo ./bin/build-appliance.sh myapp
+./bin/test-appliance.sh myapp appliance-test
 ```
 
 ### Best Practices
@@ -212,12 +239,12 @@ sudo ./scripts/build-appliance.sh myapp
 
 ## Testing Workflow
 
-1. **Build** — `sudo ./scripts/build-appliance.sh <name>`
+1. **Build** — `sudo ./bin/build-appliance.sh <name>`
 2. **Start server** — `./scripts/serve-local.sh &`
 3. **Add remote** — `incus remote add test https://localhost:8443 --protocol simplestreams --accept-certificate`
 4. **Launch** — `incus launch test:<name> test-instance`
 5. **Verify** — Check service is running and health check passes
-6. **Test script** — Run `./scripts/test-appliance.sh <name> test` for automated testing
+6. **Test script** — Run `./bin/test-appliance.sh <name> test` for automated testing
 7. **Cleanup** — `incus delete -f test-instance`
 
 ## Critical Implementation Details
@@ -230,7 +257,10 @@ The build script normalizes architecture names:
 
 ### Build Requirements
 
-- Builds **must** run with `sudo` (distrobuilder needs chroot access)
+- **Container limitation**: `distrobuilder` cannot run in containers (Docker or Incus system containers)
+  - Requires kernel features unavailable to containers (loop devices, chroot, mount namespaces)
+  - **Solution**: Use a VM for building (see [docs/vm-build-setup.md](docs/vm-build-setup.md))
+- Builds **must** run with `sudo` (distrobuilder needs root access for chroot operations)
 - First build downloads base images (cached in `.cache/distrobuilder/`)
 - Subsequent builds are much faster due to caching
 
@@ -280,6 +310,7 @@ The build script normalizes architecture names:
 - **Creating appliances**: docs/creating-appliances.md (comprehensive guide with examples)
 - **Architecture**: docs/architecture.md (technical deep dive)
 - **Deployment**: docs/deployment.md (production deployment options)
+- **VM builds**: docs/vm-build-setup.md (building in containers/devcontainers using VMs)
 - **Contributing**: CONTRIBUTING.md (contribution guidelines and standards)
 
 ## Shell Script Standards

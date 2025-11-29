@@ -1,4 +1,5 @@
 registry/
+vendor/
 .build/
 .cache/
 .certs/

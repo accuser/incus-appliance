@@ -197,7 +197,7 @@ Flow:
 3. **Build** — Run distrobuilder
 4. **Register** — Add to SimpleStreams registry
 
-Script: [scripts/build-appliance.sh](../scripts/build-appliance.sh)
+Script: [bin/build-appliance.sh](../bin/build-appliance.sh)
 
 #### Multi-Architecture Build
 

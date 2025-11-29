@@ -9,8 +9,8 @@ The Incus Appliance Registry project is now fully implemented with core infrastr
 ### ✅ Core Infrastructure
 
 - **Build System**
-  - [build-appliance.sh](scripts/build-appliance.sh) — Build single appliances
-  - [build-all.sh](scripts/build-all.sh) — Build all appliances
+  - [build-appliance.sh](bin/build-appliance.sh) — Build single appliances
+  - [build-all.sh](bin/build-all.sh) — Build all appliances
   - Makefile with comprehensive targets
   - Multi-architecture support
 
@@ -21,9 +21,9 @@ The Incus Appliance Registry project is now fully implemented with core infrastr
 
 - **Testing Infrastructure**
   - [serve-local.sh](scripts/serve-local.sh) — Local HTTPS test server
-  - [test-appliance.sh](scripts/test-appliance.sh) — Single appliance testing
-  - [test-all.sh](scripts/test-all.sh) — Integration test suite
-  - [validate.sh](scripts/validate.sh) — Template validation
+  - [test-appliance.sh](bin/test-appliance.sh) — Single appliance testing
+  - [test-all.sh](bin/test-all.sh) — Integration test suite
+  - [validate.sh](bin/validate.sh) — Template validation
 
 - **Deployment Tools**
   - [publish.sh](scripts/publish.sh) — Deploy to production

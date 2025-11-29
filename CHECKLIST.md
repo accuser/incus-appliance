@@ -14,14 +14,14 @@ Use this checklist to verify your Incus Appliance Registry is properly set up.
 ## ✅ Project Setup
 
 - [ ] Repository cloned or files copied
-- [ ] All scripts are executable (`chmod +x scripts/*.sh`)
+- [ ] All scripts are executable (`chmod +x bin/*.sh scripts/*.sh`)
 - [ ] Directory structure is correct
 - [ ] .gitignore is in place
 
 ## ✅ Build System
 
-- [ ] Can validate templates (`./scripts/validate.sh`)
-- [ ] Can build nginx appliance (`sudo ./scripts/build-appliance.sh nginx`)
+- [ ] Can validate templates (`./bin/validate.sh`)
+- [ ] Can build nginx appliance (`sudo ./bin/build-appliance.sh nginx`)
 - [ ] Registry directory is created
 - [ ] Build artifacts in `.build/nginx/amd64/`
 - [ ] Cache directory `.cache/distrobuilder/` exists
@@ -61,11 +61,11 @@ Use this checklist to verify your Incus Appliance Registry is properly set up.
 
 ## ✅ Scripts
 
-- [ ] `scripts/build-appliance.sh` works
-- [ ] `scripts/build-all.sh` works
-- [ ] `scripts/validate.sh` passes
-- [ ] `scripts/test-appliance.sh` passes
-- [ ] `scripts/test-all.sh` works
+- [ ] `bin/build-appliance.sh` works
+- [ ] `bin/build-all.sh` works
+- [ ] `bin/validate.sh` passes
+- [ ] `bin/test-appliance.sh` passes
+- [ ] `bin/test-all.sh` works
 - [ ] `scripts/serve-local.sh` starts server
 - [ ] `scripts/publish.sh` has deploy logic
 
@@ -164,11 +164,11 @@ Once everything is checked:
 1. **Test end-to-end workflow**
    ```bash
    # Fresh build
-   sudo ./scripts/build-appliance.sh nginx
+   sudo ./bin/build-appliance.sh nginx
    
    # Test locally
    ./scripts/serve-local.sh &
-   ./scripts/test-appliance.sh nginx
+   ./bin/test-appliance.sh nginx
    
    # Deploy
    ./scripts/publish.sh

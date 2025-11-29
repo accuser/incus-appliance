@@ -168,7 +168,7 @@ Supporting:
 
 ```bash
 # 1. Build nginx appliance
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 
 # 2. Start test server
 ./scripts/serve-local.sh &
@@ -188,7 +188,7 @@ incus exec my-nginx -- curl localhost
 
 ```bash
 # 1. Build all appliances
-sudo ./scripts/build-all.sh
+sudo ./bin/build-all.sh
 
 # 2. Deploy to web server
 ./scripts/publish.sh user@server:/var/www/appliances

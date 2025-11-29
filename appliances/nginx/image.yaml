@@ -3,19 +3,12 @@ image:
   distribution: alpine
   release: "3.20"
   description: "Nginx reverse proxy appliance"
-  architecture: amd64
 
 source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
+  downloader: rootfs-http
+  url: https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
   keys:
     - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
-
-targets:
-  incus:
-    vm:
-      filesystem: ext4
-      size: 1GiB
 
 packages:
   manager: apk
@@ -24,6 +17,7 @@ packages:
   sets:
     - packages:
         - nginx
+        - openrc
         - ca-certificates
         - curl
         - tzdata
@@ -80,6 +74,9 @@ files:
 actions:
   - trigger: post-unpack
     action: |-
+      #!/bin/sh
+      set -eux
+
       # Ensure nginx directories exist
       mkdir -p /var/log/nginx
       mkdir -p /var/cache/nginx
@@ -87,6 +84,9 @@ actions:
 
   - trigger: post-packages
     action: |-
+      #!/bin/sh
+      set -eux
+
       # Enable nginx at boot
       rc-update add nginx default
 
@@ -95,6 +95,12 @@ actions:
 
   - trigger: post-files
     action: |-
+      #!/bin/sh
+      set -eux
+
+      # Ensure nginx runtime directory exists for config test
+      mkdir -p /run/nginx
+
       # Validate nginx configuration
       nginx -t
 

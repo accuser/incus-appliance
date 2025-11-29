@@ -38,7 +38,7 @@ distrobuilder --version
 
 ```bash
 # Build the appliance (requires sudo for chroot)
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 This will:
@@ -183,7 +183,7 @@ Add more appliances to `appliances/` following the nginx example:
 ```bash
 mkdir -p appliances/myapp/{files,profiles}
 # Create appliance.yaml, image.yaml, README.md
-sudo ./scripts/build-appliance.sh myapp
+sudo ./bin/build-appliance.sh myapp
 ```
 
 See [docs/creating-appliances.md](docs/creating-appliances.md) for details.
@@ -192,7 +192,7 @@ See [docs/creating-appliances.md](docs/creating-appliances.md) for details.
 
 ```bash
 # Build all appliances
-sudo ./scripts/build-all.sh
+sudo ./bin/build-all.sh
 
 # Deploy to web server (rsync example)
 ./scripts/publish.sh user@server:/var/www/appliances
@@ -223,14 +223,14 @@ incus launch appliance:postgres production-db
 
 ```bash
 # After making changes to templates
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 ### Test All Appliances
 
 ```bash
 # Run integration tests
-./scripts/test-all.sh
+./bin/test-all.sh
 ```
 
 ### Export Registry
@@ -244,7 +244,7 @@ tar -czf registry.tar.gz registry/
 
 ```bash
 # Build for ARM64
-sudo ./scripts/build-appliance.sh nginx arm64
+sudo ./bin/build-appliance.sh nginx arm64
 
 # Build all appliances for all architectures
 # (This takes a while!)
@@ -263,7 +263,7 @@ sudo snap install distrobuilder --classic
 
 ```bash
 # distrobuilder requires sudo
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 ### "Cannot connect to test server"
@@ -287,7 +287,7 @@ incus image list appliance-test:
 sudo incus-simplestreams list registry/
 
 # Rebuild if needed
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 ## Documentation Index

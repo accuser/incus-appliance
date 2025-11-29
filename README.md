@@ -383,7 +383,7 @@ snap install distrobuilder --classic
 **Error: Permission denied**
 ```bash
 # distrobuilder requires sudo for chroot operations
-sudo ./scripts/build-appliance.sh nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 **Error: Failed to download**

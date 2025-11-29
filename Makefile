@@ -20,7 +20,7 @@ build: ## Build all appliances
 	done
 
 build-%: ## Build specific appliance (e.g., make build-nginx)
-	@./scripts/build-appliance.sh $* $(ARCH)
+	@./bin/build-appliance.sh $* $(ARCH)
 
 build-all-arch: ## Build all appliances for all architectures
 	@for app in $(APPLIANCES); do \
@@ -33,7 +33,7 @@ build-all-arch: ## Build all appliances for all architectures
 ## Validation
 
 validate: ## Validate all appliance templates
-	@./scripts/validate.sh
+	@./bin/validate.sh
 
 lint: ## Lint YAML files
 	@if command -v yamllint >/dev/null 2>&1; then \
@@ -45,10 +45,10 @@ lint: ## Lint YAML files
 ## Testing
 
 test: ## Run integration tests
-	@./scripts/test-all.sh
+	@./bin/test-all.sh
 
 test-%: ## Test specific appliance (e.g., make test-nginx)
-	@./scripts/test-appliance.sh $*
+	@./bin/test-appliance.sh $*
 
 ## Registry management
 
