@@ -10,13 +10,33 @@ Thank you for your interest in contributing! This document provides guidelines f
 - **Improve documentation** — Clarify guides, add examples
 - **Share feedback** — Suggest improvements or new features
 
+## Development Workflow
+
+This project uses **GitHub Flow** for all changes. See [CLAUDE.md](CLAUDE.md#development-workflow-github-flow) for complete workflow documentation.
+
+### Quick Summary
+
+1. Create a feature branch from `main`
+2. Make your changes and commit
+3. Push and create a Pull Request
+4. Ensure CI checks pass
+5. Merge using "Squash and merge"
+
+### Branch Naming
+
+- `feature/` - New features or enhancements
+- `fix/` - Bug fixes
+- `docs/` - Documentation updates
+- `refactor/` - Code refactoring
+- `test/` - Test additions or improvements
+
 ## Getting Started
 
 ### Prerequisites
 
 - Git
 - Incus (>= 6.0)
-- distrobuilder
+- incus-extra (includes distrobuilder and incus-simplestreams)
 - Basic shell scripting knowledge
 - Familiarity with YAML
 
@@ -29,7 +49,7 @@ cd incus-appliance
 
 # Verify you can build
 make validate
-make build-nginx
+./bin/build-appliance.sh nginx
 
 # Test locally
 make serve &
@@ -155,15 +175,20 @@ Typical operations...
 ### 6. Submit Pull Request
 
 ```bash
-# Create branch
-git checkout -b add-myapp-appliance
+# Create feature branch from main
+git checkout main
+git pull origin main
+git checkout -b feature/add-myapp-appliance
 
 # Commit changes
 git add appliances/myapp/
-git commit -m "Add myapp appliance"
+git commit -m "Add myapp appliance
+
+Adds a production-ready myapp appliance based on Alpine Linux.
+Includes configuration and health checks."
 
 # Push and create PR
-git push origin add-myapp-appliance
+git push origin feature/add-myapp-appliance
 gh pr create --title "Add myapp appliance"
 ```
 
@@ -306,13 +331,16 @@ Before submitting, verify:
 
 ## Pull Request Process
 
+This project uses **GitHub Flow** with squash merging. All changes must go through pull requests.
+
 ### Before Submitting
 
-1. Test your changes thoroughly
-2. Update documentation
-3. Run validation: `make validate`
-4. Check for trailing whitespace
-5. Rebase on latest main
+1. Create feature branch from latest `main`
+2. Test your changes thoroughly
+3. Update documentation
+4. Run validation: `make validate`
+5. Check for trailing whitespace
+6. Ensure CI checks pass
 
 ### PR Description
 
@@ -344,10 +372,12 @@ Adds a Redis appliance based on Alpine Linux.
 
 ### Review Process
 
-1. Automated checks run (validation, linting)
-2. Maintainer reviews code and tests
-3. Feedback addressed
-4. Approved and merged
+1. Automated checks run (validation, linting, build tests)
+2. All CI checks must pass before review
+3. Maintainer reviews code and tests
+4. Feedback addressed in additional commits
+5. Once approved, use "Squash and merge" to merge to main
+6. Delete feature branch after merge
 
 ## Commit Messages
 
