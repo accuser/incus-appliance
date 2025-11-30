@@ -7,8 +7,6 @@ set -euo pipefail
 APPLIANCE="${1:?Usage: $0 <appliance-name> [arch] [vm-name]}"
 ARCH="${2:-$(uname -m)}"
 VM_NAME="${3:-appliance-builder}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Normalize architecture names
 case "$ARCH" in
