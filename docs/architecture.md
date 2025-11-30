@@ -122,8 +122,8 @@ Complete catalog of images:
     "nginx": {
       "aliases": "nginx,nginx/amd64",
       "arch": "amd64",
-      "os": "alpine",
-      "release": "3.20",
+      "os": "debian",
+      "release": "bookworm",
       "versions": {
         "20250127": {
           "items": {
@@ -314,8 +314,8 @@ architecture: amd64
 creation_date: 1706380800
 properties:
   description: "Nginx reverse proxy appliance"
-  os: alpine
-  release: "3.20"
+  os: debian
+  release: bookworm
 templates: {}
 ```
 
@@ -386,7 +386,6 @@ Generated and managed by `incus-simplestreams`:
 
 Typical sizes:
 
-- **Alpine-based**: 20-100MB
 - **Debian-based**: 100-500MB
 - **Ubuntu-based**: 200-800MB
 
@@ -454,7 +453,7 @@ incus launch appliance:nginx my-nginx --profile nginx-proxy
 | Feature | Appliance Registry | Docker Hub |
 |---------|-------------------|------------|
 | Type | System containers | App containers |
-| Init | Full (OpenRC/systemd) | Single process |
+| Init | Full (systemd) | Single process |
 | Images | Stateful | Stateless |
 | Networking | Native | Bridge/NAT |
 | Hosting | Self-hosted | Centralized |

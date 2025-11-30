@@ -39,8 +39,11 @@ types:
   - container
 
 base:
-  distribution: alpine  # or debian, ubuntu, etc.
-  release: "3.20"
+  distribution: debian
+  release: bookworm
+
+# cloud-init support (recommended)
+cloud_init: true
 
 requirements:
   min_cpu: 1
@@ -87,32 +90,33 @@ This is the distrobuilder template that defines how to build the image:
 
 ```yaml
 image:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
   description: "MyApp appliance"
-  architecture: amd64
 
 source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
-  keys:
-    - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
-
-targets:
-  incus:
-    vm:
-      filesystem: ext4
-      size: 1GiB
+  downloader: debootstrap
+  url: http://deb.debian.org/debian
 
 packages:
-  manager: apk
+  manager: apt
   update: true
   cleanup: true
   sets:
     - packages:
-        - myapp
+        # Base system
         - ca-certificates
         - curl
+        - tzdata
+        - logrotate
+        # cloud-init for last-mile configuration
+        - cloud-init
+        # systemd for service management
+        - systemd
+        - systemd-sysv
+        - dbus
+        # Application
+        - myapp
       action: install
 
 files:
@@ -127,6 +131,17 @@ files:
       MyApp Appliance
       Configuration: /etc/myapp/
       Logs: /var/log/myapp/
+
+      Supports cloud-init for automated configuration.
+    mode: "0644"
+
+  - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+    generator: dump
+    content: |-
+      datasource_list: [LXD]
+      datasource:
+        LXD:
+          apply_network_config: true
     mode: "0644"
 
 actions:
@@ -139,10 +154,20 @@ actions:
   - trigger: post-packages
     action: |-
       # Enable service at boot
-      rc-update add myapp default
+      systemctl enable myapp
+
+      # Enable cloud-init services
+      systemctl enable cloud-init-local.service
+      systemctl enable cloud-init.service
+      systemctl enable cloud-config.service
+      systemctl enable cloud-final.service
+
+      # Disable unnecessary services
+      systemctl disable apt-daily.timer || true
+      systemctl disable apt-daily-upgrade.timer || true
 
       # Create user
-      adduser -D -H -s /sbin/nologin myapp
+      useradd -r -s /sbin/nologin myapp
 
   - trigger: post-files
     action: |-
@@ -150,43 +175,22 @@ actions:
       chown -R myapp:myapp /var/lib/myapp
       chown -R myapp:myapp /var/log/myapp
       chmod 755 /etc/myapp
+
+      # Clean up
+      apt-get clean
+      rm -rf /var/lib/apt/lists/*
 ```
 
 ## Distribution-Specific Examples
 
-### Alpine Linux
+### Debian (Recommended)
 
-Best for: Small, simple applications
-
-```yaml
-image:
-  distribution: alpine
-  release: "3.20"
-
-source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
-  keys:
-    - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
-
-packages:
-  manager: apk
-  update: true
-  cleanup: true
-```
-
-**Pros**: Minimal size, fast builds, simple init (OpenRC)
-**Cons**: musl libc (some software incompatible)
-
-### Debian
-
-Best for: Complex applications, compatibility
+Best for: Most appliances — reliable cloud-init support, broad compatibility
 
 ```yaml
 image:
   distribution: debian
   release: bookworm
-  variant: minbase
 
 source:
   downloader: debootstrap
@@ -198,12 +202,12 @@ packages:
   cleanup: true
 ```
 
-**Pros**: Wide compatibility, glibc, extensive packages
-**Cons**: Larger size, systemd complexity
+**Pros**: Native cloud-init support, wide compatibility, glibc, extensive packages
+**Cons**: Larger size than Alpine (~100-500MB vs ~20-100MB)
 
 ### Ubuntu
 
-Best for: Popular software with PPAs
+Best for: Software with PPAs or requiring newer packages
 
 ```yaml
 image:
@@ -220,7 +224,7 @@ packages:
   cleanup: true
 ```
 
-**Pros**: PPAs, commercial support, familiar
+**Pros**: PPAs, newer packages, commercial support
 **Cons**: Larger size, similar to Debian
 
 ## File Generators
@@ -287,8 +291,7 @@ actions:
   - trigger: post-packages
     action: |-
       # Enable services
-      systemctl enable myapp  # for systemd
-      rc-update add myapp default  # for OpenRC
+      systemctl enable myapp
 
       # Create users
       useradd -r -s /bin/false myapp
@@ -322,11 +325,10 @@ actions:
 
 ### Size Optimization
 
-1. **Use Alpine** — When possible, Alpine images are 5-10x smaller
-2. **Clean package cache** — Enable `cleanup: true`
-3. **Remove unnecessary packages** — Minimal package sets
-4. **Multi-stage builds** — Build dependencies in separate container
-5. **Compress static content** — Pre-compress large files
+1. **Clean package cache** — Enable `cleanup: true` and run `apt-get clean`
+2. **Remove unnecessary packages** — Minimal package sets
+3. **Multi-stage builds** — Build dependencies in separate container
+4. **Compress static content** — Pre-compress large files
 
 ### Reliability
 
@@ -378,20 +380,23 @@ make test-myapp
 
 ```bash
 # Check logs
-incus exec test-instance -- dmesg
+incus exec test-instance -- journalctl -u myapp
 incus exec test-instance -- cat /var/log/myapp/error.log
 
 # Test service
-incus exec test-instance -- rc-service myapp status
+incus exec test-instance -- systemctl status myapp
 
 # Test health check
 incus exec test-instance -- curl -s localhost:8080/health
+
+# Test cloud-init status
+incus exec test-instance -- cloud-init status
 
 # Test configuration
 incus exec test-instance -- cat /etc/myapp/config.yml
 
 # Interactive shell
-incus exec test-instance -- sh
+incus exec test-instance -- bash
 ```
 
 ## Common Patterns
@@ -447,14 +452,13 @@ environment:
 ### Package Not Found
 
 ```yaml
-# For Alpine, search packages:
-# https://pkgs.alpinelinux.org/packages
+# Search Debian packages at: https://packages.debian.org/
 
-# Add community repository if needed
+# Add backports repository if needed
 actions:
   - trigger: post-unpack
     action: |-
-      echo "http://dl-cdn.alpinelinux.org/alpine/v3.20/community" >> /etc/apk/repositories
+      echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list.d/backports.list
 ```
 
 ### Service Won't Start
@@ -465,9 +469,9 @@ actions:
   - trigger: post-packages
     action: |-
       # List available services
-      ls -la /etc/init.d/
+      systemctl list-unit-files
       # Enable the correct one
-      rc-update add myserviced default
+      systemctl enable myserviced
 ```
 
 ### Permission Errors
@@ -477,7 +481,7 @@ actions:
   - trigger: post-files
     action: |-
       # Create user first
-      adduser -D -H -s /sbin/nologin myapp
+      useradd -r -s /sbin/nologin myapp
       # Then set ownership
       chown -R myapp:myapp /var/lib/myapp
       # Check permissions
@@ -512,15 +516,17 @@ image:
 ### Custom Repositories
 
 ```yaml
-# Alpine edge packages
+# Debian backports
 actions:
   - trigger: post-unpack
     action: |-
-      echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
-      apk update
+      echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list.d/backports.list
+      apt-get update
 ```
 
 ### Cloud-init Integration
+
+Cloud-init is recommended for all appliances. Configure the Incus/LXD datasource:
 
 ```yaml
 # Include cloud-init
@@ -530,13 +536,40 @@ packages:
         - cloud-init
       action: install
 
-# Configure cloud-init
+# Configure cloud-init for Incus
 files:
-  - path: /etc/cloud/cloud.cfg.d/99-custom.cfg
+  - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
     generator: dump
     content: |-
-      datasource_list: [NoCloud, None]
-      disable_root: false
+      datasource_list: [LXD]
+      datasource:
+        LXD:
+          apply_network_config: true
+
+# Enable cloud-init services in post-packages
+actions:
+  - trigger: post-packages
+    action: |-
+      systemctl enable cloud-init-local.service
+      systemctl enable cloud-init.service
+      systemctl enable cloud-config.service
+      systemctl enable cloud-final.service
+```
+
+Users can then configure appliances at launch time:
+
+```bash
+incus init appliance:myapp my-instance
+incus config set my-instance cloud-init.user-data - << 'EOF'
+#cloud-config
+write_files:
+  - path: /etc/myapp/config.yml
+    content: |
+      setting: value
+runcmd:
+  - systemctl restart myapp
+EOF
+incus start my-instance
 ```
 
 ## Contributing Guidelines
@@ -548,7 +581,7 @@ When submitting a new appliance:
 3. **Follow conventions** — Use existing appliances as templates
 4. **Health checks** — Always include working health check
 5. **Security review** — No passwords, minimal attack surface
-6. **Size conscious** — Use Alpine when possible
+6. **Enable cloud-init** — Include cloud-init for last-mile configuration
 7. **Metadata complete** — Fill out appliance.yaml completely
 
 ## Example Appliances
