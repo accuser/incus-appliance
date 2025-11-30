@@ -28,6 +28,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache distrobuilder base images
+        uses: actions/cache@v4
+        with:
+          path: .cache/distrobuilder
+          key: distrobuilder-${{ matrix.appliance }}-${{ matrix.arch }}-${{ hashFiles(format('appliances/{0}/image.yaml', matrix.appliance)) }}
+          restore-keys: |
+            distrobuilder-${{ matrix.appliance }}-${{ matrix.arch }}-
+            distrobuilder-${{ matrix.appliance }}-
+            distrobuilder-
+
+      - name: Prepare cache directory
+        run: |
+          # Create cache directory if it doesn't exist
+          mkdir -p .cache/distrobuilder
+          # Ensure distrobuilder can write to cache (runs as root)
+          sudo chown -R root:root .cache/distrobuilder 2>/dev/null || true
+
       - name: Install build dependencies
         run: |
           # Add Zabbly repository for Incus tools
@@ -49,8 +66,9 @@ jobs:
         run: |
           sudo ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
 
-          # Fix ownership of build directory so we can work with the files
+          # Fix ownership so we can work with the files and cache can be saved
           sudo chown -R $USER:$USER .build
+          sudo chown -R $USER:$USER .cache/distrobuilder
 
       - name: Prepare image files for release
         id: metadata
