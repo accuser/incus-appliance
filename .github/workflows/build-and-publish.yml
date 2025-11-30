@@ -213,60 +213,15 @@ jobs:
             cp "$IMAGES_JSON" "${IMAGES_JSON}.bak"
 
             # Rewrite paths to point to GitHub release assets
-            # The original paths are like "images/FINGERPRINT/incus.tar.xz" or "images/FINGERPRINT/rootfs.squashfs"
-            # We need to map them to the renamed release files: "APPLIANCE-ARCH-incus.tar.xz" or "APPLIANCE-ARCH-rootfs.squashfs"
+            # Original paths: "images/FINGERPRINT/incus.tar.xz" or "images/FINGERPRINT/rootfs.squashfs"
+            # Target paths: "APPLIANCE-ARCH-incus.tar.xz" or "APPLIANCE-ARCH-rootfs.squashfs"
 
             BASE_URL="https://github.com/${GITHUB_REPO}/releases/download/latest"
 
-            # Extract appliance name from the first alias (e.g., "nginx" from "nginx/amd64")
-            # Then rewrite paths based on product metadata and file type
+            # Extract appliance name from aliases (first alias without a slash, e.g., "nginx")
+            # Product structure: products -> {key} -> aliases, arch, versions -> items
             jq --arg base_url "$BASE_URL" '
               .products |= with_entries(
-                .value.versions |= with_entries(
-                  .value.items |= with_entries(
-                    # Extract appliance name from first alias
-                    .value.path = (
-                      if .value.ftype == "incus.tar.xz" then
-                        $base_url + "/" + ((.value | getpath(["aliases"])) // "" | split(",")[0] | split("/")[0]) + "-" + (getpath(["products", .key, "arch"]) // "amd64") + "-incus.tar.xz"
-                      elif .value.ftype == "squashfs" then
-                        $base_url + "/" + ((.value | getpath(["aliases"])) // "" | split(",")[0] | split("/")[0]) + "-" + (getpath(["products", .key, "arch"]) // "amd64") + "-rootfs.squashfs"
-                      else
-                        .value.path
-                      end
-                    )
-                  )
-                )
-              )
-            ' "${IMAGES_JSON}.bak" > "$IMAGES_JSON.tmp"
-
-            # The above approach is complex. Let's use a simpler approach based on the product key structure
-            # Product key is like "alpine:3.20:default:amd64" and aliases contain "nginx,nginx/amd64"
-            jq --arg base_url "$BASE_URL" '
-              .products = (.products | to_entries | map(
-                .value.versions = (.value.versions | to_entries | map(
-                  # Get appliance name from first alias
-                  . as $version |
-                  (.value.items | to_entries | map(
-                    if .value.ftype == "incus.tar.xz" then
-                      .value.path = ($base_url + "/" + (($version.value.items | to_entries | map(select(.value.ftype == "incus.tar.xz")) | .[0].value.path | split("/") | last) | sub("^.*/"; "")))
-                    elif .value.ftype == "squashfs" then
-                      .value.path = ($base_url + "/" + (($version.value.items | to_entries | map(select(.value.ftype == "squashfs")) | .[0].value.path | split("/") | last) | sub("^.*/"; "")))
-                    else
-                      .
-                    end
-                  ) | from_entries) as $items |
-                  .value.items = $items |
-                  .
-                ) | from_entries) |
-                .
-              ) | from_entries)
-            ' "${IMAGES_JSON}.bak" > "$IMAGES_JSON.tmp2"
-
-            # Actually, the simplest approach: use the aliases field from the parent product
-            # Product structure: products -> {productkey} -> aliases (contains "nginx"), arch -> versions -> items
-            jq --arg base_url "$BASE_URL" '
-              .products |= with_entries(
-                # Get appliance name from aliases (first non-slash alias)
                 (.value.aliases | split(",") | map(select(contains("/") | not)) | .[0]) as $appliance |
                 .value.arch as $arch |
                 .value.versions |= with_entries(
