@@ -128,15 +128,6 @@ actions:
       #!/bin/sh
       set -eux
 
-      # Ensure nginx runtime directory exists for config test
-      mkdir -p /run/nginx
-
-      # Update nginx.conf to use www-data user (Debian default)
-      sed -i 's/^user nginx;/user www-data;/' /etc/nginx/nginx.conf
-
-      # Update PID path for Debian
-      sed -i 's|/run/nginx/nginx.pid|/run/nginx.pid|' /etc/nginx/nginx.conf
-
       # Validate nginx configuration
       nginx -t
 
