@@ -339,7 +339,7 @@ The build script normalizes architecture names:
 
 ## Documentation References
 
-- **User guides**: README.md, QUICKSTART.md, GETTING_STARTED.md
+- **User guides**: README.md, QUICKSTART.md
 - **Creating appliances**: docs/creating-appliances.md (comprehensive guide with examples)
 - **Architecture**: docs/architecture.md (technical deep dive)
 - **Deployment**: docs/deployment.md (production deployment options)

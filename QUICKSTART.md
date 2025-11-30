@@ -22,21 +22,30 @@ sudo snap install distrobuilder --classic
 git clone https://github.com/yourusername/incus-appliance
 cd incus-appliance
 
-# Build the nginx appliance
-make build-nginx
+# Build the nginx appliance (requires sudo for chroot)
+sudo ./bin/build-appliance.sh nginx
 ```
 
 This will:
-1. Download Alpine Linux base image
+1. Download Alpine Linux base image (cached for future builds)
 2. Install nginx and dependencies
 3. Configure the appliance
 4. Add to local SimpleStreams registry
+
+Expected output:
+```
+==> Building appliance: nginx (amd64)
+==> Running distrobuilder...
+==> Adding to SimpleStreams registry...
+==> Successfully built: nginx (amd64)
+    Registry: /home/user/incus-appliance/registry
+```
 
 ## Test Locally
 
 ```bash
 # Start the local HTTPS server
-make serve &
+./scripts/serve-local.sh &
 
 # Add as an Incus remote
 incus remote add appliance-test https://localhost:8443 \
@@ -51,46 +60,42 @@ incus launch appliance-test:nginx my-nginx
 
 # Check status
 incus list
+```
 
-# Test nginx
+## Verify It Works
+
+```bash
+# Get the welcome page
 incus exec my-nginx -- curl -s localhost
+
+# Check health endpoint
+incus exec my-nginx -- curl -s localhost/health
+
+# Check nginx status
+incus exec my-nginx -- rc-service nginx status
 ```
 
 You should see the nginx welcome page!
 
 ## Basic Operations
 
-### View Instance Info
-
-```bash
-incus info my-nginx
-```
-
 ### Execute Commands
 
 ```bash
-# Check nginx status
-incus exec my-nginx -- rc-service nginx status
-
 # View nginx version
 incus exec my-nginx -- nginx -v
 
 # Get a shell
 incus exec my-nginx -- sh
+
+# View logs
+incus exec my-nginx -- tail /var/log/nginx/access.log
 ```
 
 ### Manage Configuration
 
 ```bash
 # Push a config file
-cat > mysite.conf <<EOF
-server {
-    listen 80;
-    server_name example.com;
-    root /usr/share/nginx/html;
-}
-EOF
-
 incus file push mysite.conf my-nginx/etc/nginx/conf.d/
 
 # Reload nginx
@@ -125,140 +130,49 @@ incus info my-nginx
 incus restore my-nginx backup1
 ```
 
-### Stop and Cleanup
+### Cleanup
 
 ```bash
 # Stop instance
 incus stop my-nginx
-
-# Start again
-incus start my-nginx
 
 # Delete instance
 incus delete my-nginx
 
 # Delete with force (if running)
 incus delete -f my-nginx
+
+# Remove test remote (optional)
+incus remote remove appliance-test
 ```
 
-## Build More Appliances
+## Using Make (Recommended)
+
+If you have `make` installed:
 
 ```bash
-# Build all appliances
-make build
-
-# Build specific appliance
-make build-postgres
-make build-redis
-
-# Test an appliance
-make test-nginx
+make build-nginx      # Build nginx appliance
+make serve            # Start test server
+make test-nginx       # Test appliance
+make validate         # Validate templates
+make help             # Show all targets
 ```
 
-## Create Your Own Appliance
+## What's Created
 
-```bash
-# Create directory structure
-mkdir -p appliances/myapp/{files,profiles}
-
-# Create metadata
-cat > appliances/myapp/appliance.yaml <<EOF
-name: myapp
-version: "1.0.0"
-description: "My custom appliance"
-base:
-  distribution: alpine
-  release: "3.20"
-EOF
-
-# Create build template
-cat > appliances/myapp/image.yaml <<EOF
-image:
-  distribution: alpine
-  release: "3.20"
-  description: "My custom appliance"
-
-source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
-  keys:
-    - 0482D84022F52DF1C4E7CD43293ACD0907D9495A
-
-packages:
-  manager: apk
-  update: true
-  cleanup: true
-  sets:
-    - packages: [myapp, curl]
-      action: install
-EOF
-
-# Build it
-make build-myapp
-
-# Test it
-incus launch appliance-test:myapp test-myapp
 ```
+registry/                        # Generated SimpleStreams registry
+├── streams/v1/
+│   ├── index.json              # Entry point
+│   └── images.json             # Image catalog
+└── images/<fingerprint>/
+    ├── incus.tar.xz            # Image metadata
+    └── rootfs.squashfs         # Root filesystem
 
-## Useful Commands
-
-### Makefile Targets
-
-```bash
-make help              # Show all available targets
-make list              # List available appliances
-make validate          # Validate all templates
-make build             # Build all appliances
-make build-nginx       # Build specific appliance
-make test              # Test all appliances
-make test-nginx        # Test specific appliance
-make serve             # Start local test server
-make clean             # Remove build artifacts
-make registry-list     # List images in registry
+.build/nginx/amd64/             # Build artifacts
+.cache/distrobuilder/           # Downloaded base images (reused)
+.certs/                         # Test SSL certificates
 ```
-
-### Incus Commands
-
-```bash
-# Remotes
-incus remote list
-incus remote add <name> <url>
-incus remote remove <name>
-
-# Images
-incus image list <remote>:
-incus image delete <fingerprint>
-
-# Instances
-incus list
-incus launch <image> <name>
-incus start <name>
-incus stop <name>
-incus restart <name>
-incus delete <name>
-incus exec <name> -- <command>
-
-# Files
-incus file push <local> <instance>/<remote>
-incus file pull <instance>/<remote> <local>
-
-# Snapshots
-incus snapshot create <instance> <snapshot-name>
-incus snapshot list <instance>
-incus restore <instance> <snapshot-name>
-
-# Info
-incus info <instance>
-incus config show <instance>
-```
-
-## Next Steps
-
-- Read the [full documentation](README.md)
-- Learn about [creating appliances](docs/creating-appliances.md)
-- Understand the [architecture](docs/architecture.md)
-- Deploy to [production](docs/deployment.md)
-- [Contribute](CONTRIBUTING.md) your own appliances
 
 ## Troubleshooting
 
@@ -269,11 +183,11 @@ incus config show <instance>
 distrobuilder --version
 
 # Run with sudo (required for chroot)
-sudo make build-nginx
+sudo ./bin/build-appliance.sh nginx
 
 # Clear cache and retry
 rm -rf .cache .build
-make build-nginx
+sudo ./bin/build-appliance.sh nginx
 ```
 
 ### Can't connect to test server
@@ -284,10 +198,7 @@ ps aux | grep python3
 
 # Regenerate certificates
 rm -rf .certs
-make serve
-
-# Try different port
-PORT=9443 make serve
+./scripts/serve-local.sh
 ```
 
 ### Instance won't start
@@ -298,17 +209,14 @@ incus info my-nginx --show-log
 
 # Try console access
 incus start my-nginx --console
-
-# Check Incus itself
-incus list
-systemctl status incus
 ```
 
-## Getting Help
+## Next Steps
 
-- Check [README.md](README.md) for detailed documentation
-- Search [existing issues](https://github.com/yourusername/incus-appliance/issues)
-- Join discussions in [GitHub Discussions](https://github.com/yourusername/incus-appliance/discussions)
-- Open a new issue with `question` label
+- Read the full [README](README.md)
+- Learn about [creating appliances](docs/creating-appliances.md)
+- Understand the [architecture](docs/architecture.md)
+- Deploy to [production](docs/deployment.md)
+- [Contribute](CONTRIBUTING.md) your own appliances
 
-Happy building! 🚀
+Happy building!
