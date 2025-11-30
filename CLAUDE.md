@@ -88,16 +88,49 @@ incus remote add appliance-test https://localhost:8443 --protocol simplestreams 
 incus launch appliance-test:nginx test-instance
 ```
 
-### Deployment
+### Publishing the Registry
+
+#### Option 1: Automatic Publishing via GitHub Actions (Recommended)
+
+The repository includes a GitHub Actions workflow that automatically builds and publishes appliances:
+
+1. **Enable GitHub Pages** in repository settings (Settings → Pages → Source: GitHub Actions)
+2. **Push changes** to appliances — the workflow automatically:
+   - Builds all appliances
+   - Uploads image files to GitHub Releases (`latest` tag)
+   - Publishes SimpleStreams metadata to GitHub Pages
+3. **Access your registry** at: `https://<username>.github.io/<repo-name>`
+
+Users can then add your registry:
+```bash
+incus remote add myregistry https://username.github.io/incus-appliance --protocol simplestreams
+incus launch myregistry:nginx my-nginx
+```
+
+**What gets published:**
+- **GitHub Pages** — SimpleStreams JSON files (index.json, images.json) + landing page
+- **GitHub Releases** — Actual image files (incus.tar.xz, rootfs.squashfs)
+
+#### Option 2: Manual Publishing to Your Own Server
+
+When building with the VM, the registry is created inside the VM. You need to pull it to your host before publishing:
 
 ```bash
-# Deploy to production (requires PUBLISH_DEST or argument)
+# 1. Pull registry from VM to host
+./scripts/pull-registry.sh
+
+# 2. Deploy to production (requires PUBLISH_DEST or argument)
 ./scripts/publish.sh user@server:/var/www/appliances
 
 # Using environment variables
 PUBLISH_METHOD=rsync PUBLISH_DEST=user@server:/var/www/appliances ./scripts/publish.sh
 PUBLISH_METHOD=s3 PUBLISH_DEST=s3://bucket/path ./scripts/publish.sh
 ```
+
+**Publishing Methods:**
+- `rsync` (default) — Sync to remote server via SSH
+- `s3` — Upload to AWS S3 bucket
+- `custom` — Use custom publish script at `scripts/publish-custom.sh`
 
 ### Cleanup
 

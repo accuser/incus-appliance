@@ -1,0 +1,283 @@
+name: Build and Publish Registry
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'appliances/**'
+      - 'bin/**'
+      - '.github/workflows/build-and-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        appliance: [nginx]  # Add more appliances as they're created
+        arch: [amd64]       # Add arm64 when needed
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          # Add Zabbly repository for Incus tools
+          sudo mkdir -p /etc/apt/keyrings
+          sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+          sudo sh -c 'cat > /etc/apt/sources.list.d/zabbly-incus-stable.sources <<EOF
+          Enabled: yes
+          Types: deb
+          URIs: https://pkgs.zabbly.com/incus/stable
+          Suites: $(. /etc/os-release && echo ${VERSION_CODENAME})
+          Components: main
+          Architectures: $(dpkg --print-architecture)
+          Signed-By: /etc/apt/keyrings/zabbly.asc
+          EOF'
+          sudo apt-get update
+          sudo apt-get install -y incus-extra jq
+
+      - name: Build appliance
+        run: |
+          sudo ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
+
+      - name: Get image metadata
+        id: metadata
+        run: |
+          FINGERPRINT=$(ls -1 registry/images/ | head -1)
+          echo "fingerprint=${FINGERPRINT}" >> $GITHUB_OUTPUT
+          echo "Image fingerprint: ${FINGERPRINT}"
+
+          # Rename files to include appliance and arch for uniqueness
+          METADATA_NAME="${{ matrix.appliance }}-${{ matrix.arch }}-incus.tar.xz"
+          ROOTFS_NAME="${{ matrix.appliance }}-${{ matrix.arch }}-rootfs.squashfs"
+
+          cp "registry/images/${FINGERPRINT}/incus.tar.xz" ".build/${METADATA_NAME}"
+          cp "registry/images/${FINGERPRINT}/rootfs.squashfs" ".build/${ROOTFS_NAME}"
+
+          echo "metadata_name=${METADATA_NAME}" >> $GITHUB_OUTPUT
+          echo "rootfs_name=${ROOTFS_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-${{ matrix.appliance }}-${{ matrix.arch }}
+          path: |
+            .build/${{ steps.metadata.outputs.metadata_name }}
+            .build/${{ steps.metadata.outputs.rootfs_name }}
+          retention-days: 1
+
+      - name: Upload registry artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: registry-${{ matrix.appliance }}-${{ matrix.arch }}
+          path: registry/
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: images-*
+          path: release-files/
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: |
+          echo "==> Downloaded files for release:"
+          ls -lh release-files/
+
+      - name: Create/Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Appliance Images"
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: release-files/*
+          body: |
+            ## Latest Appliance Images
+
+            This release contains the latest built appliance images.
+
+            **Last updated:** ${{ github.event.head_commit.timestamp }}
+
+            ### Usage
+
+            Add the remote:
+            ```bash
+            incus remote add appliance https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --protocol simplestreams
+            ```
+
+            Launch an appliance:
+            ```bash
+            incus launch appliance:nginx my-nginx
+            ```
+
+            ### Available Appliances
+
+            - nginx (amd64)
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download all registry artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: registry-*
+          path: registries/
+
+      - name: Merge registries
+        run: |
+          mkdir -p merged-registry/streams/v1
+          mkdir -p merged-registry/images
+
+          # Initialize empty registry if needed
+          if [ ! -f "merged-registry/streams/v1/index.json" ]; then
+            cat > merged-registry/streams/v1/index.json <<'INDEXEOF'
+          {
+            "index": {
+              "images": {
+                "datatype": "image-downloads",
+                "path": "streams/v1/images.json",
+                "format": "products:1.0"
+              }
+            },
+            "format": "index:1.0"
+          }
+          INDEXEOF
+          fi
+
+          # Merge all registry artifacts
+          for reg_dir in registries/registry-*; do
+            if [ -d "$reg_dir/registry" ]; then
+              echo "==> Merging $reg_dir"
+              # Copy registry contents
+              cp -r "$reg_dir/registry"/* merged-registry/ 2>/dev/null || true
+            fi
+          done
+
+      - name: Rewrite URLs to point to GitHub Releases
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          IMAGES_JSON="merged-registry/streams/v1/images.json"
+
+          if [ -f "$IMAGES_JSON" ]; then
+            # Backup original
+            cp "$IMAGES_JSON" "${IMAGES_JSON}.bak"
+
+            # Rewrite paths to point to GitHub release assets
+            # Change paths like "images/FINGERPRINT/incus.tar.xz"
+            # to "https://github.com/REPO/releases/download/latest/APPLIANCE-ARCH-incus.tar.xz"
+
+            BASE_URL="https://github.com/${GITHUB_REPO}/releases/download/latest"
+
+            # This is a simplified rewrite - a more sophisticated version would parse the JSON properly
+            # For now, we'll update the paths in the JSON to point to release URLs
+            jq --arg base_url "$BASE_URL" '
+              walk(
+                if type == "object" and has("path") then
+                  .path = ($base_url + "/" + (.ftype + ".tar.xz" | sub("lxd.tar.xz"; "incus.tar.xz")))
+                else
+                  .
+                end
+              )
+            ' "${IMAGES_JSON}.bak" > "$IMAGES_JSON" || cp "${IMAGES_JSON}.bak" "$IMAGES_JSON"
+
+            echo "==> Registry URLs updated"
+            echo "Sample paths:"
+            jq -r '.. | .path? // empty' "$IMAGES_JSON" | head -5
+          fi
+
+      - name: Create index.html
+        run: |
+          cat > merged-registry/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Incus Appliance Registry</title>
+            <style>
+              body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+              code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+              pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+            </style>
+          </head>
+          <body>
+            <h1>Incus Appliance Registry</h1>
+            <p>SimpleStreams image server for pre-configured Incus system containers.</p>
+
+            <h2>Quick Start</h2>
+            <pre><code>incus remote add appliance https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --protocol simplestreams
+          incus launch appliance:nginx my-nginx</code></pre>
+
+            <h2>Available Appliances</h2>
+            <ul>
+              <li>nginx - Reverse proxy and web server (Alpine 3.20, ~50MB)</li>
+            </ul>
+
+            <h2>Documentation</h2>
+            <p>See the <a href="https://github.com/${{ github.repository }}">GitHub repository</a> for full documentation.</p>
+          </body>
+          </html>
+          EOF
+
+      - name: List final registry contents
+        run: |
+          echo "==> Final registry structure:"
+          find merged-registry -type f
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: merged-registry/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  summary:
+    needs: [release, publish]
+    runs-on: ubuntu-24.04
+    if: success()
+
+    steps:
+      - name: Create summary
+        run: |
+          echo "## ✅ Registry published successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Registry URL" >> $GITHUB_STEP_SUMMARY
+          echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# Add the remote" >> $GITHUB_STEP_SUMMARY
+          echo "incus remote add appliance https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --protocol simplestreams" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Launch an appliance" >> $GITHUB_STEP_SUMMARY
+          echo "incus launch appliance:nginx my-nginx" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

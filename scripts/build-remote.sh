@@ -7,8 +7,6 @@ set -euo pipefail
 APPLIANCE="${1:?Usage: $0 <appliance-name> [arch] [vm-name]}"
 ARCH="${2:-$(uname -m)}"
 VM_NAME="${3:-appliance-builder}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Normalize architecture names
 case "$ARCH" in
@@ -37,5 +35,8 @@ incus exec "$VM_NAME" -- bash -c "cd incus-appliance && sudo ./bin/build-applian
 echo ""
 echo "==> Build complete!"
 echo "    Built: ${APPLIANCE} (${ARCH})"
-echo "    Registry: ${PROJECT_ROOT}/registry/"
+echo "    Registry location: /root/incus-appliance/registry/ (inside VM)"
+echo ""
+echo "To copy the registry to your host:"
+echo "  ./scripts/pull-registry.sh"
 echo ""
