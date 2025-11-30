@@ -165,7 +165,7 @@ Incus client fetches and launches
 ### Directory Structure
 
 - **`appliances/`** — Appliance definitions (each in its own directory)
-  - **`_base/`** — Shared base templates (debian.yaml)
+  - **`_base/`** — Reference templates for copy-paste (debian.yaml) — not includable, just canonical examples
   - **`<name>/`** — Each appliance directory contains:
     - `appliance.yaml` — Metadata (optional but recommended)
     - `image.yaml` — Distrobuilder build template (required)

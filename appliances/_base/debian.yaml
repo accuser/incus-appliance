@@ -1,11 +1,14 @@
-# Base configuration fragment for Debian appliances
-# Include this in your appliance with YAML anchors or copy relevant sections
+# Base configuration reference for Debian appliances
 #
-# This base provides:
+# NOTE: This file is a REFERENCE TEMPLATE, not an includable base.
+# Distrobuilder does not support cross-file YAML anchors.
+# Copy the relevant sections into your appliance's image.yaml.
+#
+# This reference provides canonical examples for:
 # - Debian Bookworm (12) minimal installation
 # - cloud-init for last-mile configuration
 # - systemd for service management
-# - Common utilities for networking and TLS
+# - Common packages and actions
 
 image:
   distribution: debian
