@@ -18,7 +18,6 @@ packages:
         # Base system
         - ca-certificates
         - curl
-        - gnupg
         - tzdata
         - logrotate
         # cloud-init for last-mile configuration
