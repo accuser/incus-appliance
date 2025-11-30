@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         appliance: [nginx]  # Add more appliances as they're created
-        arch: [amd64]       # Add arm64 when needed
+        arch: [amd64, arm64]
       fail-fast: false
 
     steps:
@@ -142,7 +142,7 @@ jobs:
 
             ### Available Appliances
 
-            - nginx (amd64)
+            - nginx (amd64, arm64)
 
   publish:
     needs: build
@@ -227,7 +227,7 @@ jobs:
 
             <h2>Available Appliances</h2>
             <ul>
-              <li>nginx - Reverse proxy and web server (Alpine 3.20, ~50MB)</li>
+              <li>nginx - Reverse proxy and web server (Alpine 3.20, amd64/arm64, ~50MB)</li>
             </ul>
 
             <h2>Documentation</h2>
