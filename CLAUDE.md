@@ -165,7 +165,7 @@ Incus client fetches and launches
 ### Directory Structure
 
 - **`appliances/`** — Appliance definitions (each in its own directory)
-  - **`_base/`** — Shared base templates (alpine.yaml, debian.yaml)
+  - **`_base/`** — Shared base templates (debian.yaml)
   - **`<name>/`** — Each appliance directory contains:
     - `appliance.yaml` — Metadata (optional but recommended)
     - `image.yaml` — Distrobuilder build template (required)
@@ -205,8 +205,9 @@ name: myapp
 version: "1.0.0"
 description: "Brief description"
 base:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
+cloud_init: true
 ports: [...]
 volumes: [...]
 healthcheck:
@@ -257,24 +258,21 @@ sudo ./bin/build-appliance.sh myapp
 
 ### Best Practices
 
-- **Use Alpine when possible** — Results in 5-10x smaller images
-- **No default passwords** — Use cloud-init or profiles for credentials
+- **Use Debian as base** — Provides reliable cloud-init support and broad compatibility
+- **Enable cloud-init** — Include cloud-init for last-mile configuration
+- **No default passwords** — Use cloud-init for credentials
 - **Run services as non-root** — Create dedicated users in post-packages action
 - **Enable cleanup** — Set `packages.cleanup: true` to remove package cache
 - **Include health checks** — Define working health check in appliance.yaml
 - **Document persistence** — Clearly specify which directories should be persisted in volumes
 
-### Distribution-Specific Notes
+### Distribution Notes
 
-**Alpine Linux** (preferred for small appliances):
-- Init: OpenRC (`rc-update add service default`)
-- Package manager: apk
-- C library: musl (some software may be incompatible)
-
-**Debian/Ubuntu** (for complex applications):
+**Debian** (recommended):
 - Init: systemd (`systemctl enable service`)
 - Package manager: apt
-- C library: glibc (broader compatibility)
+- C library: glibc (broad compatibility)
+- cloud-init: Native support, works reliably with Incus
 
 ## Testing Workflow
 
@@ -328,8 +326,8 @@ The build script normalizes architecture names:
 
 - **"Permission denied"** — Build scripts must run with `sudo`
 - **"distrobuilder not found"** — Install with `sudo snap install distrobuilder --classic`
-- **Package not found** — Check distribution's package repository (Alpine may need community repo enabled)
-- **Service won't start** — Verify service name matches init system (OpenRC: `/etc/init.d/<name>`, systemd: `<name>.service`)
+- **Package not found** — Check distribution's package repository
+- **Service won't start** — Verify service name matches init system (systemd: `<name>.service`)
 
 ### Template Issues
 
