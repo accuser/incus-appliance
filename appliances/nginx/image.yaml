@@ -18,6 +18,7 @@ packages:
     - packages:
         - nginx
         - openrc
+        - ifupdown-ng
         - ca-certificates
         - curl
         - tzdata
@@ -38,6 +39,16 @@ files:
   - path: /usr/share/nginx/html/index.html
     generator: copy
     source: files/index.html
+    mode: "0644"
+
+  - path: /etc/network/interfaces
+    generator: dump
+    content: |-
+      auto lo
+      iface lo inet loopback
+
+      auto eth0
+      iface eth0 inet dhcp
     mode: "0644"
 
   - path: /etc/motd
