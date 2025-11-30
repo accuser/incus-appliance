@@ -49,30 +49,37 @@ jobs:
         run: |
           sudo ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
 
-      - name: Get image metadata
+      - name: Prepare image files for release
         id: metadata
         run: |
-          FINGERPRINT=$(ls -1 registry/images/ | head -1)
-          echo "fingerprint=${FINGERPRINT}" >> $GITHUB_OUTPUT
-          echo "Image fingerprint: ${FINGERPRINT}"
+          # Files are in .build/<appliance>/<arch>/
+          BUILD_DIR=".build/${{ matrix.appliance }}/${{ matrix.arch }}"
 
-          # Rename files to include appliance and arch for uniqueness
+          # Verify files exist
+          if [ ! -f "${BUILD_DIR}/incus.tar.xz" ] || [ ! -f "${BUILD_DIR}/rootfs.squashfs" ]; then
+            echo "Error: Build files not found in ${BUILD_DIR}"
+            ls -la "${BUILD_DIR}" || true
+            exit 1
+          fi
+
+          # Rename files to include appliance and arch for uniqueness in release
           METADATA_NAME="${{ matrix.appliance }}-${{ matrix.arch }}-incus.tar.xz"
           ROOTFS_NAME="${{ matrix.appliance }}-${{ matrix.arch }}-rootfs.squashfs"
 
-          cp "registry/images/${FINGERPRINT}/incus.tar.xz" ".build/${METADATA_NAME}"
-          cp "registry/images/${FINGERPRINT}/rootfs.squashfs" ".build/${ROOTFS_NAME}"
+          cp "${BUILD_DIR}/incus.tar.xz" "${BUILD_DIR}/${METADATA_NAME}"
+          cp "${BUILD_DIR}/rootfs.squashfs" "${BUILD_DIR}/${ROOTFS_NAME}"
 
           echo "metadata_name=${METADATA_NAME}" >> $GITHUB_OUTPUT
           echo "rootfs_name=${ROOTFS_NAME}" >> $GITHUB_OUTPUT
+          echo "build_dir=${BUILD_DIR}" >> $GITHUB_OUTPUT
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: images-${{ matrix.appliance }}-${{ matrix.arch }}
           path: |
-            .build/${{ steps.metadata.outputs.metadata_name }}
-            .build/${{ steps.metadata.outputs.rootfs_name }}
+            ${{ steps.metadata.outputs.build_dir }}/${{ steps.metadata.outputs.metadata_name }}
+            ${{ steps.metadata.outputs.build_dir }}/${{ steps.metadata.outputs.rootfs_name }}
           retention-days: 1
 
       - name: Upload registry artifact
