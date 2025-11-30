@@ -74,7 +74,10 @@ jobs:
 
           # Fix ownership so we can work with the files and cache can be saved
           sudo chown -R $USER:$USER .build
-          sudo chown -R $USER:$USER .cache/distrobuilder
+          # Cache directory may not exist if distrobuilder cleaned it up
+          if [ -d .cache/distrobuilder ]; then
+            sudo chown -R $USER:$USER .cache/distrobuilder
+          fi
 
       - name: Prepare image files for release
         id: metadata
