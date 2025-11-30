@@ -49,6 +49,9 @@ jobs:
         run: |
           sudo ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
 
+          # Fix ownership of build directory so we can work with the files
+          sudo chown -R $USER:$USER .build
+
       - name: Prepare image files for release
         id: metadata
         run: |
