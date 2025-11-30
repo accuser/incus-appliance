@@ -350,6 +350,7 @@ The build script normalizes architecture names:
 - **Architecture**: docs/architecture.md (technical deep dive)
 - **Deployment**: docs/deployment.md (production deployment options)
 - **VM builds**: docs/vm-build-setup.md (building in containers/devcontainers using VMs)
+- **Versioning**: docs/versioning.md (semantic versioning policy and image aliases)
 - **Contributing**: CONTRIBUTING.md (contribution guidelines and standards)
 
 ## Shell Script Standards

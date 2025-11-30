@@ -22,6 +22,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       appliances: ${{ steps.set-matrix.outputs.appliances }}
+      versions: ${{ steps.set-matrix.outputs.versions }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,15 +38,13 @@ jobs:
           # Read defaults
           DEFAULT_ARCHS=$(yq -o=json '.defaults.architectures // ["amd64", "arm64"]' appliances.yaml)
 
-          # Generate matrix includes
-          MATRIX_INCLUDES=$(yq -o=json '
-            .appliances[] |
-            select(.enabled != false) |
-            {
-              "appliance": .name,
-              "archs": (.architectures // ["amd64", "arm64"])
-            }
-          ' appliances.yaml | jq -s '[.[] | .archs[] as $arch | {appliance: .appliance, arch: $arch}]')
+          # Generate matrix includes with version from each appliance's appliance.yaml
+          MATRIX_INCLUDES=$(for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            # Read version from appliance.yaml, default to 0.0.0
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            archs=$(yq -o=json ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"]" appliances.yaml)
+            echo "{\"appliance\": \"${appliance}\", \"version\": \"${version}\", \"archs\": ${archs}}"
+          done | jq -s '[.[] | .archs[] as $arch | {appliance: .appliance, version: .version, arch: $arch}]')
 
           # Create the matrix object
           MATRIX=$(echo "$MATRIX_INCLUDES" | jq -c '{include: .}')
@@ -55,10 +54,18 @@ jobs:
           APPLIANCES=$(yq -o=json '[.appliances[] | select(.enabled != false) | .name]' appliances.yaml | jq -c '.')
           echo "appliances=$APPLIANCES" >> $GITHUB_OUTPUT
 
+          # Output appliance versions for release job
+          VERSIONS=$(for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            echo "{\"name\": \"${appliance}\", \"version\": \"${version}\"}"
+          done | jq -s -c '.')
+          echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
+
           # Debug output
           echo "Generated matrix:"
           echo "$MATRIX" | jq .
           echo "Appliances: $APPLIANCES"
+          echo "Versions: $VERSIONS"
 
   build:
     needs: generate-matrix
@@ -169,6 +176,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
 
       - name: Install yq
         run: |
@@ -187,17 +196,50 @@ jobs:
           echo "==> Downloaded files for release:"
           ls -lh release-files/
 
-      - name: Generate appliance list for release notes
-        id: appliance-list
+      - name: Generate release information
+        id: release-info
         run: |
-          # Generate markdown list of appliances from manifest
-          LIST=$(yq '.appliances[] | select(.enabled != false) | "- " + .name + " (" + ((.architectures // ["amd64", "arm64"]) | join(", ")) + ")"' appliances.yaml)
-          # Use delimiter for multiline output
+          # Get versions from the matrix output
+          VERSIONS='${{ needs.generate-matrix.outputs.versions }}'
+
+          # Generate markdown list of appliances with versions
+          LIST=""
+          for row in $(echo "$VERSIONS" | jq -r '.[] | @base64'); do
+            name=$(echo "$row" | base64 -d | jq -r '.name')
+            version=$(echo "$row" | base64 -d | jq -r '.version')
+            archs=$(yq -r ".appliances[] | select(.name == \"${name}\") | .architectures // [\"amd64\", \"arm64\"] | join(\", \")" appliances.yaml)
+            LIST="${LIST}- **${name}** v${version} (${archs})"$'\n'
+          done
+
+          # Calculate a combined release tag based on date
+          RELEASE_DATE=$(date +%Y%m%d)
+          RELEASE_TAG="v${RELEASE_DATE}"
+
           echo "list<<EOF" >> $GITHUB_OUTPUT
           echo "$LIST" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          echo "release_tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          echo "release_date=${RELEASE_DATE}" >> $GITHUB_OUTPUT
 
-      - name: Create/Update Release
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous release tag
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Generating changelog since ${PREV_TAG}"
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "- Initial release")
+          else
+            echo "No previous tag found, showing recent commits"
+            CHANGELOG=$(git log -10 --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "- Initial release")
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create/Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
@@ -220,14 +262,47 @@ jobs:
             incus remote add appliance https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --protocol simplestreams
             ```
 
-            Launch an appliance:
+            Launch an appliance (supports version tags):
             ```bash
-            incus launch appliance:<name> my-instance
+            # Latest version
+            incus launch appliance:nginx my-nginx
+
+            # Specific version
+            incus launch appliance:nginx:1.0.0 my-nginx
+
+            # Latest in major version
+            incus launch appliance:nginx:1 my-nginx
             ```
 
             ### Available Appliances
 
-            ${{ steps.appliance-list.outputs.list }}
+            ${{ steps.release-info.outputs.list }}
+
+            ### Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+
+      - name: Create Versioned Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release-info.outputs.release_tag }}
+          name: "Release ${{ steps.release-info.outputs.release_tag }}"
+          draft: false
+          prerelease: false
+          make_latest: false
+          files: release-files/*
+          body: |
+            ## Appliance Images - ${{ steps.release-info.outputs.release_tag }}
+
+            **Built:** ${{ github.event.head_commit.timestamp }}
+
+            ### Appliances
+
+            ${{ steps.release-info.outputs.list }}
+
+            ### Changes
+
+            ${{ steps.changelog.outputs.changelog }}
 
   publish:
     needs: [generate-matrix, build]
@@ -292,8 +367,14 @@ jobs:
 
       - name: Generate index.html from manifest
         run: |
-          # Generate appliance list HTML
-          APPLIANCE_HTML=$(yq '.appliances[] | select(.enabled != false) | "<li><strong>" + .name + "</strong> - " + (.description // "Appliance") + " (" + ((.architectures // ["amd64", "arm64"]) | join(", ")) + ")</li>"' appliances.yaml)
+          # Generate appliance list HTML with versions
+          APPLIANCE_HTML=""
+          for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            description=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .description // \"Appliance\"" appliances.yaml)
+            archs=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"] | join(\", \")" appliances.yaml)
+            APPLIANCE_HTML="${APPLIANCE_HTML}<li><strong>${appliance}</strong> v${version} - ${description} (${archs})</li>"
+          done
 
           cat > merged-registry/index.html <<EOF
           <!DOCTYPE html>
@@ -371,4 +452,8 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📋 Built Appliances" >> $GITHUB_STEP_SUMMARY
-          yq '.appliances[] | select(.enabled != false) | "- **" + .name + "** (" + ((.architectures // ["amd64", "arm64"]) | join(", ")) + ")"' appliances.yaml >> $GITHUB_STEP_SUMMARY
+          for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            archs=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"] | join(\", \")" appliances.yaml)
+            echo "- **${appliance}** v${version} (${archs})" >> $GITHUB_STEP_SUMMARY
+          done

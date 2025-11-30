@@ -10,7 +10,9 @@ defaults:
   enabled: true
 
 # List of appliances to build
+# Version is read from each appliance's appliance.yaml file during build
 appliances:
   - name: nginx
     description: High-performance web server and reverse proxy
+    # Version: defined in appliances/nginx/appliance.yaml
     # Uses defaults: enabled=true, architectures=[amd64, arm64]
