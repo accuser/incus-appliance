@@ -1,0 +1,61 @@
+# appliance.yaml - Appliance metadata
+name: redis
+version: "1.0.0"
+description: "Redis in-memory data store with cloud-init support"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 128MB
+  min_disk: 256MB
+  recommended_memory: 512MB
+  recommended_disk: 1GB
+
+# Exposed ports (informational)
+ports:
+  - port: 6379
+    protocol: tcp
+    description: Redis
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/redis
+    description: "Data files (RDB/AOF persistence)"
+  - path: /var/log/redis
+    description: "Log files"
+
+# Health check command
+healthcheck:
+  command: "redis-cli ping | grep -q PONG || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - database
+  - cache
+  - key-value
+  - nosql
+
+# Related appliances
+see_also:
+  - postgresql

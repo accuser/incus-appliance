@@ -1,0 +1,60 @@
+# appliance.yaml - Appliance metadata
+name: postgresql
+version: "1.0.0"
+description: "PostgreSQL database server with cloud-init support"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 256MB
+  min_disk: 1GB
+  recommended_memory: 1GB
+  recommended_disk: 10GB
+
+# Exposed ports (informational)
+ports:
+  - port: 5432
+    protocol: tcp
+    description: PostgreSQL
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/postgresql
+    description: "Database data"
+  - path: /var/log/postgresql
+    description: "Log files"
+
+# Health check command
+healthcheck:
+  command: "pg_isready -U postgres || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - database
+  - sql
+  - relational
+
+# Related appliances
+see_also:
+  - redis

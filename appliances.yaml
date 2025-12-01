@@ -15,4 +15,12 @@ appliances:
   - name: nginx
     description: High-performance web server and reverse proxy
     # Version: defined in appliances/nginx/appliance.yaml
-    # Uses defaults: enabled=true, architectures=[amd64, arm64]
+    # Uses defaults: enabled=true, architectures=[amd64]
+
+  - name: postgresql
+    description: PostgreSQL database server with cloud-init support
+    # Version: defined in appliances/postgresql/appliance.yaml
+
+  - name: redis
+    description: Redis in-memory data store with cloud-init support
+    # Version: defined in appliances/redis/appliance.yaml
