@@ -27,7 +27,7 @@ sudo ./bin/build-appliance.sh nginx
 ```
 
 This will:
-1. Download Alpine Linux base image (cached for future builds)
+1. Download Debian Bookworm base image (cached for future builds)
 2. Install nginx and dependencies
 3. Configure the appliance
 4. Add to local SimpleStreams registry
@@ -72,7 +72,7 @@ incus exec my-nginx -- curl -s localhost
 incus exec my-nginx -- curl -s localhost/health
 
 # Check nginx status
-incus exec my-nginx -- rc-service nginx status
+incus exec my-nginx -- systemctl status nginx
 ```
 
 You should see the nginx welcome page!
@@ -86,7 +86,7 @@ You should see the nginx welcome page!
 incus exec my-nginx -- nginx -v
 
 # Get a shell
-incus exec my-nginx -- sh
+incus exec my-nginx -- bash
 
 # View logs
 incus exec my-nginx -- tail /var/log/nginx/access.log

@@ -72,7 +72,7 @@ make test
 
 | Name | Description | Base | Size |
 |------|-------------|------|------|
-| [nginx](appliances/nginx/) | Reverse proxy and web server | Alpine 3.20 | ~50MB |
+| [nginx](appliances/nginx/) | Reverse proxy and web server | Debian Bookworm | ~150MB |
 
 More appliances coming soon: postgres, redis, traefik, caddy
 
@@ -119,25 +119,27 @@ name: myapp
 version: "1.0.0"
 description: "My awesome appliance"
 base:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
 ```
 
 3. Create `appliances/myapp/image.yaml`:
 
 ```yaml
 image:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
   description: "My awesome appliance"
 
 source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
+  downloader: debootstrap
+  url: https://deb.debian.org/debian
+  variant: minbase
 
 packages:
-  manager: apk
+  manager: apt
   update: true
+  cleanup: true
   sets:
     - packages:
         - myapp
@@ -146,7 +148,7 @@ packages:
 actions:
   - trigger: post-packages
     action: |-
-      rc-update add myapp default
+      systemctl enable myapp
 ```
 
 4. Build and test:

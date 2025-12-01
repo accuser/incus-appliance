@@ -98,24 +98,26 @@ name: myapp
 version: "1.0.0"
 description: "Clear, concise description"
 base:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
 ```
 
 Minimal `image.yaml`:
 ```yaml
 image:
-  distribution: alpine
-  release: "3.20"
+  distribution: debian
+  release: bookworm
   description: "MyApp appliance"
 
 source:
-  downloader: alpinelinux-http
-  url: https://dl-cdn.alpinelinux.org/alpine/
+  downloader: debootstrap
+  url: https://deb.debian.org/debian
+  variant: minbase
 
 packages:
-  manager: apk
+  manager: apt
   update: true
+  cleanup: true
   sets:
     - packages: [myapp]
       action: install
@@ -123,7 +125,7 @@ packages:
 actions:
   - trigger: post-packages
     action: |-
-      rc-update add myapp default
+      systemctl enable myapp
 ```
 
 ### 4. Test Your Appliance
@@ -184,7 +186,7 @@ git checkout -b feature/add-myapp-appliance
 git add appliances/myapp/
 git commit -m "Add myapp appliance
 
-Adds a production-ready myapp appliance based on Alpine Linux.
+Adds a production-ready myapp appliance based on Debian Bookworm.
 Includes configuration and health checks."
 
 # Push and create PR
@@ -230,7 +232,7 @@ name: myapp
 version: "1.0.0"  # Quoted to prevent interpretation as float
 
 packages:
-  manager: apk
+  manager: apt
   sets:
     - action: install
       packages:
@@ -267,8 +269,8 @@ packages:
    actions:
      - trigger: post-packages
        action: |-
-         adduser -D -H -s /sbin/nologin myapp
-         rc-update add myapp default
+         useradd --system --no-create-home --shell /usr/sbin/nologin myapp
+         systemctl enable myapp
    ```
 
 3. **Minimal packages**
@@ -282,9 +284,9 @@ packages:
 
 ### Size Optimization
 
-1. **Prefer Alpine**
-   - Use Alpine Linux when possible
-   - Results in 5-10x smaller images
+1. **Use Debian as base**
+   - Use Debian Bookworm for reliable cloud-init support
+   - Provides broad compatibility with glibc
 
 2. **Clean package cache**
    ```yaml
@@ -355,13 +357,13 @@ Example:
 ```markdown
 ## Add Redis Appliance
 
-Adds a Redis appliance based on Alpine Linux.
+Adds a Redis appliance based on Debian Bookworm.
 
 ### Features
-- Redis 7.2
+- Redis 7.0
 - Persistence enabled by default
 - Health check included
-- Minimal size (~30MB)
+- Cloud-init support
 
 ### Testing
 - Built successfully on amd64
@@ -404,7 +406,7 @@ Examples:
 ```
 feat(nginx): add nginx appliance
 
-Adds a production-ready nginx appliance based on Alpine Linux.
+Adds a production-ready nginx appliance based on Debian Bookworm.
 Includes reverse proxy configuration and health checks.
 
 feat(scripts): add multi-arch build support
@@ -512,7 +514,7 @@ sudo umount /tmp/rootfs
 ```bash
 # Launch and interact
 incus launch test:myapp debug-instance
-incus exec debug-instance -- sh
+incus exec debug-instance -- bash
 
 # Copy files in/out
 incus file push test.conf debug-instance/etc/
