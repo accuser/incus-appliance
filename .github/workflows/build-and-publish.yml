@@ -86,9 +86,10 @@ jobs:
 
       - name: Set up QEMU for cross-architecture builds
         if: matrix.arch != 'amd64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: ${{ matrix.arch }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable
 
       - name: Setup Incus tools
         uses: ./.github/actions/setup-incus-tools
@@ -321,23 +322,42 @@ jobs:
           }
           INDEXEOF
 
+          # Initialize empty images.json with base structure
+          echo '{"content_id": "images", "datatype": "image-downloads", "format": "products:1.0", "products": {}}' > merged-registry/streams/v1/images.json
+
           # Merge all registry artifacts
           for reg_dir in registries/registry-*; do
             echo "==> Processing $reg_dir"
             ls -la "$reg_dir" || true
 
-            # Handle both nested and flat structures
-            if [ -d "$reg_dir/registry" ]; then
-              echo "  Found nested registry structure"
-              cp -r "$reg_dir/registry"/* merged-registry/ 2>/dev/null || true
-            elif [ -d "$reg_dir/streams" ]; then
-              echo "  Found flat registry structure"
-              cp -r "$reg_dir"/* merged-registry/ 2>/dev/null || true
+            # Find the images.json file
+            IMAGES_JSON=""
+            if [ -f "$reg_dir/registry/streams/v1/images.json" ]; then
+              IMAGES_JSON="$reg_dir/registry/streams/v1/images.json"
+            elif [ -f "$reg_dir/streams/v1/images.json" ]; then
+              IMAGES_JSON="$reg_dir/streams/v1/images.json"
+            fi
+
+            if [ -n "$IMAGES_JSON" ] && [ -f "$IMAGES_JSON" ]; then
+              echo "  Merging images.json from $IMAGES_JSON"
+              # Merge products from this images.json into the merged one
+              jq -s '.[0].products * .[1].products | {content_id: "images", datatype: "image-downloads", format: "products:1.0", products: .}' \
+                merged-registry/streams/v1/images.json "$IMAGES_JSON" > merged-registry/streams/v1/images.json.tmp
+              mv merged-registry/streams/v1/images.json.tmp merged-registry/streams/v1/images.json
+            fi
+
+            # Copy image files
+            if [ -d "$reg_dir/registry/images" ]; then
+              cp -r "$reg_dir/registry/images"/* merged-registry/images/ 2>/dev/null || true
+            elif [ -d "$reg_dir/images" ]; then
+              cp -r "$reg_dir/images"/* merged-registry/images/ 2>/dev/null || true
             fi
           done
 
           echo "==> Merged registry contents:"
           find merged-registry -type f
+          echo "==> Products in images.json:"
+          jq '.products | keys' merged-registry/streams/v1/images.json
 
       - name: Generate index.html from manifest
         run: |
