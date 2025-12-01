@@ -1,6 +1,6 @@
 # appliance.yaml - Appliance metadata
 name: nginx
-version: "2.0.0"
+version: "1.22.1"
 description: "Reverse proxy and web server appliance with cloud-init support"
 maintainer: "Incus Appliance Registry"
 

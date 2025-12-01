@@ -1,6 +1,6 @@
 # appliance.yaml - Appliance metadata
 name: postgresql
-version: "1.0.0"
+version: "15"
 description: "PostgreSQL database server with cloud-init support"
 maintainer: "Incus Appliance Registry"
 

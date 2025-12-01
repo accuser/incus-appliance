@@ -1,6 +1,6 @@
 # appliance.yaml - Appliance metadata
 name: redis
-version: "1.0.0"
+version: "7.0.15"
 description: "Redis in-memory data store with cloud-init support"
 maintainer: "Incus Appliance Registry"
 
