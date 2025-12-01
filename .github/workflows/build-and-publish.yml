@@ -359,26 +359,37 @@ jobs:
           echo "==> Products in images.json:"
           jq '.products | keys' merged-registry/streams/v1/images.json
 
-      - name: Generate index.html from manifest
+      - name: Generate index.html and directory listings
         run: |
-          # Generate appliance list HTML with versions
+          REGISTRY_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          # Generate appliance list HTML with links to detail pages
           APPLIANCE_HTML=""
           for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
             version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
             description=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .description // \"Appliance\"" appliances.yaml)
             archs=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"] | join(\", \")" appliances.yaml)
-            APPLIANCE_HTML="${APPLIANCE_HTML}<li><strong>${appliance}</strong> v${version} - ${description} (${archs})</li>"
+            APPLIANCE_HTML="${APPLIANCE_HTML}<li><a href=\"images/${appliance}/\"><strong>${appliance}</strong></a> v${version} - ${description} (${archs})</li>"
           done
 
-          cat > merged-registry/index.html <<EOF
+          # Generate main index.html
+          cat > merged-registry/index.html <<'MAINEOF'
           <!DOCTYPE html>
           <html>
           <head>
             <title>Incus Appliance Registry</title>
             <style>
-              body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-              code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+              body { font-family: monospace; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+              h1 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+              th { background: #f5f5f5; }
+              a { color: #0066cc; text-decoration: none; }
+              a:hover { text-decoration: underline; }
               pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+              code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+              .date { color: #666; font-size: 0.9em; }
               li { margin: 8px 0; }
             </style>
           </head>
@@ -387,19 +398,130 @@ jobs:
             <p>SimpleStreams image server for pre-configured Incus system containers.</p>
 
             <h2>Quick Start</h2>
-            <pre><code>incus remote add appliance https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --protocol simplestreams
-          incus launch appliance:nginx my-nginx</code></pre>
+          MAINEOF
+
+          echo "    <pre><code>incus remote add appliance ${REGISTRY_URL} --protocol simplestreams" >> merged-registry/index.html
+          echo "incus launch appliance:nginx my-nginx</code></pre>" >> merged-registry/index.html
+
+          cat >> merged-registry/index.html <<MAINEOF2
 
             <h2>Available Appliances</h2>
             <ul>
           ${APPLIANCE_HTML}
             </ul>
 
+            <h2>Browse</h2>
+            <p><a href="images/">Browse all images</a> | <a href="streams/v1/images.json">images.json</a></p>
+
             <h2>Documentation</h2>
             <p>See the <a href="https://github.com/${{ github.repository }}">GitHub repository</a> for full documentation.</p>
+
+            <p class="date">Last updated: ${BUILD_DATE}</p>
           </body>
           </html>
-          EOF
+          MAINEOF2
+
+          # Generate per-appliance directory listings
+          for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            archs=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"] | .[]" appliances.yaml)
+
+            # Create appliance directory structure
+            mkdir -p "merged-registry/images/${appliance}"
+
+            # Generate architecture list for appliance
+            ARCH_ROWS=""
+            for arch in $archs; do
+              mkdir -p "merged-registry/images/${appliance}/${arch}"
+              ARCH_ROWS="${ARCH_ROWS}<tr><td><a href=\"${arch}/\">${arch}/</a></td><td>-</td><td>${BUILD_DATE}</td></tr>"
+
+              # Find actual image files for this appliance/arch
+              FILE_ROWS=""
+              for img_hash_dir in merged-registry/images/*/; do
+                hash_name=$(basename "$img_hash_dir")
+                # Skip our created directories
+                [[ "$hash_name" == "$appliance" ]] && continue
+                for file in "$img_hash_dir"*; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    filesize=$(ls -lh "$file" 2>/dev/null | awk '{print $5}' || echo "-")
+                    FILE_ROWS="${FILE_ROWS}<tr><td><a href=\"../../${hash_name}/${filename}\">${filename}</a></td><td>${filesize}</td><td>-</td></tr>"
+                  fi
+                done
+              done
+
+              if [ -z "$FILE_ROWS" ]; then
+                FILE_ROWS="<tr><td colspan=\"3\"><em>Image files served via SimpleStreams protocol</em></td></tr>"
+              fi
+
+              # Generate per-architecture page
+              cat > "merged-registry/images/${appliance}/${arch}/index.html" <<ARCHEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Index of /images/${appliance}/${arch}/</title>
+            <style>
+              body { font-family: monospace; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+              h1 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+              th { background: #f5f5f5; }
+              a { color: #0066cc; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              pre { background: #f4f4f4; padding: 15px; border-radius: 5px; }
+              .info { margin-bottom: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1>Index of /images/${appliance}/${arch}/</h1>
+            <p class="info"><strong>Appliance:</strong> ${appliance} | <strong>Architecture:</strong> ${arch} | <strong>Version:</strong> ${version}</p>
+            <table>
+              <tr><th>Name</th><th>Size</th><th>Last Modified</th></tr>
+              <tr><td><a href="../">../</a></td><td>-</td><td>-</td></tr>
+          ${FILE_ROWS}
+            </table>
+            <h3>Launch</h3>
+            <pre>incus launch appliance:${appliance} my-${appliance}</pre>
+          </body>
+          </html>
+          ARCHEOF
+            done
+
+            # Generate appliance index page
+            cat > "merged-registry/images/${appliance}/index.html" <<APPEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Index of /images/${appliance}/</title>
+            <style>
+              body { font-family: monospace; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+              h1 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+              th { background: #f5f5f5; }
+              a { color: #0066cc; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              pre { background: #f4f4f4; padding: 15px; border-radius: 5px; }
+              .info { margin-bottom: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1>Index of /images/${appliance}/</h1>
+            <p class="info"><strong>Version:</strong> ${version}</p>
+            <table>
+              <tr><th>Name</th><th>Size</th><th>Last Modified</th></tr>
+              <tr><td><a href="../">../</a></td><td>-</td><td>-</td></tr>
+          ${ARCH_ROWS}
+            </table>
+            <h3>Launch</h3>
+            <pre>incus launch appliance:${appliance} my-${appliance}</pre>
+          </body>
+          </html>
+          APPEOF
+          done
+
+          echo "==> Generated directory listings:"
+          find merged-registry -name "index.html" -type f
 
       - name: List final registry contents
         run: |
