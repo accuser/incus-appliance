@@ -1,0 +1,62 @@
+# appliance.yaml - Appliance metadata
+name: atlantis
+version: "0.37.1"
+description: "Terraform/OpenTofu Pull Request automation for GitOps"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 512MB
+  min_disk: 1GB
+  recommended_memory: 1GB
+  recommended_disk: 5GB
+
+# Exposed ports (informational)
+ports:
+  - port: 4141
+    protocol: tcp
+    description: Atlantis web UI and webhook endpoint
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/atlantis
+    description: "Atlantis data directory"
+  - path: /etc/atlantis
+    description: "Configuration files"
+
+# Health check command
+healthcheck:
+  command: "curl -sf http://localhost:4141/healthz || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - gitops
+  - terraform
+  - opentofu
+  - automation
+  - ci-cd
+
+# Related appliances
+see_also:
+  - nginx

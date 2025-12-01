@@ -24,3 +24,7 @@ appliances:
   - name: redis
     description: Redis in-memory data store with cloud-init support
     # Version: defined in appliances/redis/appliance.yaml
+
+  - name: atlantis
+    description: Terraform/OpenTofu Pull Request automation for GitOps
+    # Version: defined in appliances/atlantis/appliance.yaml
