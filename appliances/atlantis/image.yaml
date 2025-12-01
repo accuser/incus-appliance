@@ -162,9 +162,6 @@ actions:
       # Verify installation
       /usr/local/bin/atlantis version
 
-      # Enable services
-      systemctl enable atlantis
-
       # Enable cloud-init services
       systemctl enable cloud-init-local.service
       systemctl enable cloud-init.service
@@ -179,6 +176,9 @@ actions:
     action: |-
       #!/bin/sh
       set -eux
+
+      # Enable atlantis service (service file is created in files section)
+      systemctl enable atlantis
 
       # Set permissions
       chown -R atlantis:atlantis /var/lib/atlantis
