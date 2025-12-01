@@ -351,12 +351,20 @@ jobs:
           mkdir -p existing-registry/images
 
           # Try to fetch existing images.json (may not exist on first run)
+          EMPTY_REGISTRY='{"content_id": "images", "datatype": "image-downloads", "format": "products:1.0", "products": {}}'
+
           if curl -sf "${REGISTRY_URL}/streams/v1/images.json" -o existing-registry/streams/v1/images.json; then
-            echo "Downloaded existing images.json"
-            cat existing-registry/streams/v1/images.json | jq '.products | keys'
+            # Verify it's valid JSON
+            if jq empty existing-registry/streams/v1/images.json 2>/dev/null; then
+              echo "Downloaded existing images.json"
+              jq '.products | keys' existing-registry/streams/v1/images.json
+            else
+              echo "Downloaded file is not valid JSON - starting fresh"
+              echo "$EMPTY_REGISTRY" > existing-registry/streams/v1/images.json
+            fi
           else
             echo "No existing registry found - starting fresh"
-            echo '{"content_id": "images", "datatype": "image-downloads", "format": "products:1.0", "products": {}}' > existing-registry/streams/v1/images.json
+            echo "$EMPTY_REGISTRY" > existing-registry/streams/v1/images.json
           fi
 
       - name: Download all registry artifacts
