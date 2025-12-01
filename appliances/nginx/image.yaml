@@ -53,14 +53,14 @@ files:
   - path: /etc/motd
     generator: dump
     content: |-
-      ╔══════════════════════════════════════════╗
-      ║  Nginx Appliance                         ║
-      ║  Incus Appliance Registry                ║
-      ╠══════════════════════════════════════════╣
-      ║  Config: /etc/nginx/conf.d/              ║
-      ║  Logs:   /var/log/nginx/                 ║
-      ║  Status: nginx -t && systemctl reload nginx
-      ╚══════════════════════════════════════════╝
+      ╔══════════════════════════════════════════════════╗
+      ║  Nginx Appliance                                 ║
+      ║  Incus Appliance Registry                        ║
+      ╠══════════════════════════════════════════════════╣
+      ║  Config: /etc/nginx/conf.d/                      ║
+      ║  Logs:   /var/log/nginx/                         ║
+      ║  Status: nginx -t && systemctl reload nginx      ║
+      ╚══════════════════════════════════════════════════╝
 
       Supports cloud-init for automated configuration.
       See: incus config set <instance> cloud-init.user-data ...
