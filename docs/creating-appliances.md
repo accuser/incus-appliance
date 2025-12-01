@@ -12,6 +12,96 @@ An appliance consists of:
 4. **README.md** — User documentation
 5. **profiles/** — Optional Incus profiles (optional)
 
+Additionally, you must register your appliance in the root **appliances.yaml** manifest file for it to be built by CI/CD.
+
+## The appliances.yaml Manifest
+
+The root `appliances.yaml` file defines which appliances are built and published by CI/CD. This is separate from the per-appliance `appliance.yaml` metadata files.
+
+### Schema Reference
+
+```yaml
+# Default settings applied to all appliances unless overridden
+defaults:
+  architectures:        # List of architectures to build
+    - amd64
+    - arm64
+  enabled: true         # Whether appliances are enabled by default
+
+# List of appliances to build
+appliances:
+  - name: myapp                    # Required: Appliance name (must match directory name)
+    description: "Description"     # Required: Brief description for registry
+    architectures:                 # Optional: Override default architectures
+      - amd64
+    enabled: true                  # Optional: Set to false to skip building
+```
+
+### Field Reference
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `defaults.architectures` | No | `["amd64", "arm64"]` | Default architectures for all appliances |
+| `defaults.enabled` | No | `true` | Default enabled state for all appliances |
+| `appliances[].name` | **Yes** | — | Appliance name, must match directory in `appliances/` |
+| `appliances[].description` | **Yes** | — | Brief description shown in registry and GitHub Pages |
+| `appliances[].architectures` | No | Inherits from defaults | Override architectures for this appliance |
+| `appliances[].enabled` | No | Inherits from defaults | Set `false` to skip building this appliance |
+
+### How CI/CD Uses This File
+
+The GitHub Actions workflow reads `appliances.yaml` to:
+
+1. **Generate build matrix** — Creates parallel build jobs for each appliance/architecture combination
+2. **Filter enabled appliances** — Skips appliances with `enabled: false`
+3. **Read versions** — Version is sourced from each appliance's `appliance.yaml` file (not from this manifest)
+4. **Generate registry metadata** — Uses descriptions for the SimpleStreams index and GitHub Pages
+
+### Example: Full Manifest
+
+```yaml
+# appliances.yaml - Registry manifest
+
+defaults:
+  architectures:
+    - amd64
+    - arm64
+  enabled: true
+
+appliances:
+  # Production-ready appliances
+  - name: nginx
+    description: High-performance web server and reverse proxy
+
+  - name: postgres
+    description: PostgreSQL database server with replication support
+
+  # Architecture-specific appliance
+  - name: arm-optimized-app
+    description: Application optimized for ARM processors
+    architectures:
+      - arm64
+
+  # Temporarily disabled appliance
+  - name: experimental-app
+    description: Experimental application (under development)
+    enabled: false
+```
+
+### Adding Your Appliance to the Manifest
+
+After creating your appliance directory and files, add an entry to `appliances.yaml`:
+
+```yaml
+appliances:
+  # ... existing appliances ...
+
+  - name: myapp
+    description: "Brief description of what your appliance does"
+```
+
+The version is automatically read from your appliance's `appliances/myapp/appliance.yaml` file during the build process.
+
 ## Step-by-Step Guide
 
 ### 1. Create Directory Structure
@@ -576,13 +666,14 @@ incus start my-instance
 
 When submitting a new appliance:
 
-1. **Test thoroughly** — Build and launch successfully
-2. **Document well** — Complete README.md with examples
-3. **Follow conventions** — Use existing appliances as templates
-4. **Health checks** — Always include working health check
-5. **Security review** — No passwords, minimal attack surface
-6. **Enable cloud-init** — Include cloud-init for last-mile configuration
-7. **Metadata complete** — Fill out appliance.yaml completely
+1. **Register in manifest** — Add entry to root `appliances.yaml`
+2. **Test thoroughly** — Build and launch successfully
+3. **Document well** — Complete README.md with examples
+4. **Follow conventions** — Use existing appliances as templates
+5. **Health checks** — Always include working health check
+6. **Security review** — No passwords, minimal attack surface
+7. **Enable cloud-init** — Include cloud-init for last-mile configuration
+8. **Metadata complete** — Fill out appliance.yaml completely
 
 ## Example Appliances
 
