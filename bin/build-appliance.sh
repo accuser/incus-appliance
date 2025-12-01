@@ -101,27 +101,23 @@ mkdir -p "$REGISTRY_DIR"
 # Use incus-simplestreams to add the image
 # The command must be run from the registry directory
 # Aliases follow semantic versioning: name, name:version, name:major.minor, name:major, name:latest
+# Note: incus-simplestreams automatically adds /${ARCH} suffix to aliases, so we don't add them manually
 cd "$REGISTRY_DIR"
 sudo incus-simplestreams add \
   "$BUILD_DIR/incus.tar.xz" \
   "$BUILD_DIR/rootfs.squashfs" \
   --alias "${APPLIANCE}" \
-  --alias "${APPLIANCE}/${ARCH}" \
   --alias "${APPLIANCE}:${VERSION}" \
-  --alias "${APPLIANCE}:${VERSION}/${ARCH}" \
   --alias "${APPLIANCE}:${VERSION_MAJOR}.${VERSION_MINOR}" \
-  --alias "${APPLIANCE}:${VERSION_MAJOR}.${VERSION_MINOR}/${ARCH}" \
   --alias "${APPLIANCE}:${VERSION_MAJOR}" \
-  --alias "${APPLIANCE}:${VERSION_MAJOR}/${ARCH}" \
-  --alias "${APPLIANCE}:latest" \
-  --alias "${APPLIANCE}:latest/${ARCH}"
+  --alias "${APPLIANCE}:latest"
 
 echo "==> Successfully built: ${APPLIANCE} v${VERSION} (${ARCH})"
 echo "    Registry: ${REGISTRY_DIR}"
 echo "    Aliases:"
-echo "      - ${APPLIANCE} (default)"
-echo "      - ${APPLIANCE}/${ARCH}"
-echo "      - ${APPLIANCE}:${VERSION} (exact version)"
-echo "      - ${APPLIANCE}:${VERSION_MAJOR}.${VERSION_MINOR} (minor version)"
-echo "      - ${APPLIANCE}:${VERSION_MAJOR} (major version)"
+echo "      - ${APPLIANCE}"
+echo "      - ${APPLIANCE}:${VERSION}"
+echo "      - ${APPLIANCE}:${VERSION_MAJOR}.${VERSION_MINOR}"
+echo "      - ${APPLIANCE}:${VERSION_MAJOR}"
 echo "      - ${APPLIANCE}:latest"
+echo "    (Architecture suffix /${ARCH} added automatically)"
