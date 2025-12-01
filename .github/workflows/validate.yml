@@ -54,8 +54,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Zabbly repository
+      - name: Install build dependencies
         run: |
+          # Add Zabbly repository for Incus tools
           sudo mkdir -p /etc/apt/keyrings
           sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
           sudo sh -c 'cat > /etc/apt/sources.list.d/zabbly-incus-stable.sources <<EOF
@@ -67,12 +68,8 @@ jobs:
           Architectures: $(dpkg --print-architecture)
           Signed-By: /etc/apt/keyrings/zabbly.asc
           EOF'
-
-      - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: incus-extra
-          version: 1.0
+          sudo apt-get update
+          sudo apt-get install -y incus-extra
 
       - name: Cache distrobuilder base images
         uses: actions/cache@v4
