@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/accuser/incus-appliance/schemas/appliance.schema.json",
+  "title": "Appliance Metadata",
+  "description": "Schema for per-appliance appliance.yaml metadata files",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Appliance name (should match directory name)",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 63
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the appliance",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?(\\+[a-zA-Z0-9.]+)?$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the appliance",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "maintainer": {
+      "type": "string",
+      "description": "Maintainer name and optional email"
+    },
+    "architectures": {
+      "type": "array",
+      "description": "Supported architectures",
+      "items": {
+        "type": "string",
+        "enum": ["amd64", "arm64", "armhf", "i386", "ppc64el", "s390x"]
+      },
+      "minItems": 1
+    },
+    "types": {
+      "type": "array",
+      "description": "Supported instance types",
+      "items": {
+        "type": "string",
+        "enum": ["container", "vm"]
+      },
+      "minItems": 1
+    },
+    "base": {
+      "type": "object",
+      "description": "Base distribution information",
+      "properties": {
+        "distribution": {
+          "type": "string",
+          "description": "Base distribution name",
+          "enum": ["debian", "ubuntu", "alpine", "centos", "rocky", "fedora", "opensuse"]
+        },
+        "release": {
+          "type": "string",
+          "description": "Distribution release/version"
+        }
+      },
+      "required": ["distribution", "release"],
+      "additionalProperties": false
+    },
+    "cloud_init": {
+      "type": "boolean",
+      "description": "Whether cloud-init is supported",
+      "default": false
+    },
+    "requirements": {
+      "type": "object",
+      "description": "Resource requirements",
+      "properties": {
+        "min_cpu": {
+          "type": "integer",
+          "description": "Minimum CPU cores",
+          "minimum": 1
+        },
+        "min_memory": {
+          "type": "string",
+          "description": "Minimum memory (e.g., '128MB', '1GB')",
+          "pattern": "^[0-9]+(KB|MB|GB|TB)$"
+        },
+        "min_disk": {
+          "type": "string",
+          "description": "Minimum disk space (e.g., '256MB', '1GB')",
+          "pattern": "^[0-9]+(KB|MB|GB|TB)$"
+        },
+        "recommended_memory": {
+          "type": "string",
+          "description": "Recommended memory",
+          "pattern": "^[0-9]+(KB|MB|GB|TB)$"
+        },
+        "recommended_disk": {
+          "type": "string",
+          "description": "Recommended disk space",
+          "pattern": "^[0-9]+(KB|MB|GB|TB)$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ports": {
+      "type": "array",
+      "description": "Exposed ports",
+      "items": {
+        "type": "object",
+        "properties": {
+          "port": {
+            "type": "integer",
+            "description": "Port number",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "protocol": {
+            "type": "string",
+            "description": "Protocol",
+            "enum": ["tcp", "udp"]
+          },
+          "description": {
+            "type": "string",
+            "description": "Port description"
+          }
+        },
+        "required": ["port", "protocol"],
+        "additionalProperties": false
+      }
+    },
+    "volumes": {
+      "type": "array",
+      "description": "Volumes that should be persisted",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Volume mount path",
+            "pattern": "^/"
+          },
+          "description": {
+            "type": "string",
+            "description": "Volume description"
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    "environment": {
+      "type": "array",
+      "description": "Environment variables supported via cloud-init",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Environment variable name",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "default": {
+            "type": "string",
+            "description": "Default value"
+          },
+          "description": {
+            "type": "string",
+            "description": "Variable description"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "healthcheck": {
+      "type": "object",
+      "description": "Health check configuration",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Health check command"
+        },
+        "interval": {
+          "type": "string",
+          "description": "Check interval (e.g., '30s', '1m')",
+          "pattern": "^[0-9]+(s|m|h)$"
+        },
+        "timeout": {
+          "type": "string",
+          "description": "Check timeout",
+          "pattern": "^[0-9]+(s|m|h)$"
+        },
+        "retries": {
+          "type": "integer",
+          "description": "Number of retries before unhealthy",
+          "minimum": 1
+        }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for filtering and categorization",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      }
+    },
+    "see_also": {
+      "type": "array",
+      "description": "Related appliances",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      }
+    }
+  },
+  "required": ["name", "version", "description"],
+  "additionalProperties": false
+}

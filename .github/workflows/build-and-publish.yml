@@ -75,6 +75,12 @@ jobs:
       fail-fast: false
 
     steps:
+      - name: Clean workspace
+        run: |
+          # Clean up root-owned files from previous builds
+          sudo rm -rf ${{ github.workspace }}/.build || true
+          sudo rm -rf ${{ github.workspace }}/registry || true
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -95,6 +101,7 @@ jobs:
 
           # Fix ownership so we can work with the files
           sudo chown -R $USER:$USER .build
+          sudo chown -R $USER:$USER registry
 
       - name: Prepare image files for release
         id: metadata

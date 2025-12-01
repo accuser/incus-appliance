@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/accuser/incus-appliance/schemas/appliances.schema.json",
+  "title": "Appliances Manifest",
+  "description": "Schema for the root appliances.yaml manifest file that defines which appliances are built by CI/CD",
+  "type": "object",
+  "properties": {
+    "defaults": {
+      "type": "object",
+      "description": "Default settings applied to all appliances unless overridden",
+      "properties": {
+        "architectures": {
+          "type": "array",
+          "description": "Default architectures to build for all appliances",
+          "items": {
+            "type": "string",
+            "enum": ["amd64", "arm64", "armhf", "i386", "ppc64el", "s390x"]
+          },
+          "default": ["amd64", "arm64"],
+          "minItems": 1
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Default enabled state for all appliances",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "appliances": {
+      "type": "array",
+      "description": "List of appliances to build",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Appliance name (must match directory name in appliances/)",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "minLength": 1,
+            "maxLength": 63
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description shown in registry and GitHub Pages",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "architectures": {
+            "type": "array",
+            "description": "Override default architectures for this appliance",
+            "items": {
+              "type": "string",
+              "enum": ["amd64", "arm64", "armhf", "i386", "ppc64el", "s390x"]
+            },
+            "minItems": 1
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Set to false to skip building this appliance"
+          }
+        },
+        "required": ["name", "description"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["appliances"],
+  "additionalProperties": false
+}

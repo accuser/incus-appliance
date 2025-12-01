@@ -2,14 +2,56 @@
 set -euo pipefail
 
 # Validate all appliance templates
-# Checks for required files and basic YAML syntax
+# Checks for required files, YAML syntax, and JSON schema validation
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 APPLIANCES_DIR="${PROJECT_ROOT}/appliances"
+SCHEMAS_DIR="${PROJECT_ROOT}/schemas"
 
 errors=0
 warnings=0
+
+# Check if schema validation tools are available
+SCHEMA_VALIDATION=false
+if command -v check-jsonschema >/dev/null 2>&1 && command -v yq >/dev/null 2>&1; then
+  SCHEMA_VALIDATION=true
+  echo "==> Schema validation enabled (check-jsonschema + yq found)"
+elif command -v yq >/dev/null 2>&1; then
+  echo "==> Schema validation disabled (install check-jsonschema for full validation)"
+  echo "    Install with: pip install check-jsonschema"
+else
+  echo "==> Schema validation disabled (yq and check-jsonschema not found)"
+fi
+echo ""
+
+# Validate root appliances.yaml if it exists
+if [[ -f "${PROJECT_ROOT}/appliances.yaml" ]]; then
+  echo "==> Validating appliances.yaml manifest..."
+
+  # YAML syntax check
+  if command -v yamllint >/dev/null 2>&1; then
+    if yamllint -d relaxed "${PROJECT_ROOT}/appliances.yaml" >/dev/null 2>&1; then
+      echo "  ✓ Valid YAML syntax"
+    else
+      echo "  ✗ Invalid YAML syntax"
+      yamllint -d relaxed "${PROJECT_ROOT}/appliances.yaml" 2>&1 | head -10
+      ((errors++))
+    fi
+  fi
+
+  # Schema validation
+  if [[ "$SCHEMA_VALIDATION" == "true" ]] && [[ -f "${SCHEMAS_DIR}/appliances.schema.json" ]]; then
+    if yq -o=json "${PROJECT_ROOT}/appliances.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliances.schema.json" - 2>/dev/null; then
+      echo "  ✓ Valid against schema"
+    else
+      echo "  ✗ Schema validation failed"
+      yq -o=json "${PROJECT_ROOT}/appliances.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliances.schema.json" - 2>&1 | head -20
+      ((errors++))
+    fi
+  fi
+  echo ""
+fi
 
 echo "==> Validating appliance templates..."
 echo ""
@@ -61,7 +103,7 @@ for appliance_dir in "${APPLIANCES_DIR}"/*; do
   else
     echo "  ✓ appliance.yaml found"
 
-    # Validate appliance.yaml
+    # Validate appliance.yaml syntax
     if command -v yamllint >/dev/null 2>&1; then
       if yamllint -d relaxed "${appliance_dir}/appliance.yaml" >/dev/null 2>&1; then
         echo "    ✓ Valid YAML syntax"
@@ -71,15 +113,26 @@ for appliance_dir in "${APPLIANCES_DIR}"/*; do
       fi
     fi
 
-    # Check for recommended fields
-    for field in name version description; do
-      if grep -q "^${field}:" "${appliance_dir}/appliance.yaml"; then
-        echo "    ✓ Has ${field}"
+    # Schema validation for appliance.yaml
+    if [[ "$SCHEMA_VALIDATION" == "true" ]] && [[ -f "${SCHEMAS_DIR}/appliance.schema.json" ]]; then
+      if yq -o=json "${appliance_dir}/appliance.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliance.schema.json" - 2>/dev/null; then
+        echo "    ✓ Valid against schema"
       else
-        echo "    ⚠ Missing ${field}"
-        ((warnings++))
+        echo "    ✗ Schema validation failed"
+        yq -o=json "${appliance_dir}/appliance.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliance.schema.json" - 2>&1 | head -10
+        ((errors++))
       fi
-    done
+    else
+      # Fallback to basic field checking
+      for field in name version description; do
+        if grep -q "^${field}:" "${appliance_dir}/appliance.yaml"; then
+          echo "    ✓ Has ${field}"
+        else
+          echo "    ⚠ Missing ${field}"
+          ((warnings++))
+        fi
+      done
+    fi
   fi
 
   # Check for README (recommended)

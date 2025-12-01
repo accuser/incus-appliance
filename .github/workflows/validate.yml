@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'appliances/**'
+      - 'appliances.yaml'
+      - 'schemas/**'
       - 'bin/**'
       - 'scripts/**'
       - '.github/workflows/**'
@@ -12,6 +14,8 @@ on:
       - main
     paths:
       - 'appliances/**'
+      - 'appliances.yaml'
+      - 'schemas/**'
       - 'bin/**'
       - 'scripts/**'
       - '.github/workflows/**'
@@ -30,6 +34,14 @@ jobs:
         with:
           packages: yamllint shellcheck
           version: 1.0
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Install check-jsonschema
+        run: pip install check-jsonschema
 
       - name: Validate YAML files
         run: make lint || true
@@ -51,6 +63,12 @@ jobs:
         appliance: [nginx]
 
     steps:
+      - name: Clean workspace
+        run: |
+          # Clean up root-owned files from previous builds
+          sudo rm -rf ${{ github.workspace }}/.build || true
+          sudo rm -rf ${{ github.workspace }}/registry || true
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -60,6 +78,12 @@ jobs:
       - name: Build appliance
         run: |
           make build-${{ matrix.appliance }}
+
+      - name: Fix ownership
+        run: |
+          # Fix ownership so future runs can clean up
+          sudo chown -R $USER:$USER ${{ github.workspace }}/registry || true
+          sudo chown -R $USER:$USER ${{ github.workspace }}/.build || true
 
       - name: List registry contents
         run: |
