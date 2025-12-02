@@ -7,7 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 APPLIANCES_DIR="${PROJECT_ROOT}/appliances"
-SCHEMAS_DIR="${PROJECT_ROOT}/schemas"
 
 errors=0
 warnings=0
