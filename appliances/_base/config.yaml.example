@@ -1,0 +1,104 @@
+# Base configuration reference for appliances
+#
+# This file is a REFERENCE TEMPLATE showing the structure of config.yaml.
+# Copy this to your appliance directory and customize for your application.
+#
+# The config.yaml file uses Incus's cloud-init configuration format.
+# See: https://cloudinit.readthedocs.io/en/latest/reference/modules.html
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+
+    # Update package lists (recommended)
+    package_update: true
+
+    # Don't upgrade all packages during build (keeps build fast)
+    package_upgrade: false
+
+    # Packages to install
+    packages:
+      # Base system packages (recommended for all appliances)
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking utilities (optional but useful)
+      - iproute2
+      - iputils-ping
+      # Your application packages
+      # - myapp
+
+    # Create files with specific content
+    write_files:
+      # Application configuration
+      - path: /etc/myapp/config.yaml
+        permissions: '0644'
+        content: |
+          # Application configuration
+          port: 8080
+          log_level: info
+
+      # Message of the day (recommended for appliances)
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            MyApp Appliance
+            Incus Appliance Registry
+          =====================================================
+            Config: /etc/myapp/
+            Logs:   /var/log/myapp/
+            Status: systemctl status myapp
+          =====================================================
+
+          Supports cloud-init for automated configuration.
+          See: incus config set <instance> cloud-init.user-data ...
+
+      # Log rotation configuration
+      - path: /etc/logrotate.d/myapp
+        permissions: '0644'
+        content: |
+          /var/log/myapp/*.log {
+              daily
+              missingok
+              rotate 14
+              compress
+              delaycompress
+              notifempty
+              create 0640 myapp myapp
+          }
+
+      # Incus/LXD datasource configuration (required for cloud-init to work with Incus)
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    # Commands to run after boot
+    runcmd:
+      # Create necessary directories
+      - mkdir -p /var/lib/myapp
+      - mkdir -p /var/log/myapp
+      # Create application user (if needed)
+      - useradd -r -s /sbin/nologin myapp || true
+      # Set permissions
+      - chown -R myapp:myapp /var/lib/myapp
+      - chown -R myapp:myapp /var/log/myapp
+      # Enable service at boot
+      - systemctl enable myapp
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true
+
+# Optional: Commands to run after files/ directory is copied
+# Use this for setup that depends on files you've placed in the files/ directory
+# post_files: |
+#   # Validate configuration
+#   myapp --validate-config /etc/myapp/config.yaml
+#   # Set permissions on copied files
+#   chmod 600 /etc/myapp/secrets.conf

@@ -36,9 +36,9 @@ This project uses **GitHub Flow** for all changes. See [CLAUDE.md](CLAUDE.md#dev
 
 - Git
 - Incus (>= 6.0)
-- incus-extra (includes distrobuilder and incus-simplestreams)
+- incus-simplestreams (for registry management)
 - Basic shell scripting knowledge
-- Familiarity with YAML
+- Familiarity with YAML and cloud-init
 
 ### Development Setup
 
@@ -63,14 +63,14 @@ make test-nginx
 
 Good candidates for appliances:
 
-✅ **Good Choices**
+**Good Choices**
 - Single-purpose services (nginx, redis, postgres)
 - Development tools (git server, CI runners)
 - Network services (DNS, DHCP, VPN)
 - Monitoring tools (Prometheus, Grafana)
 - Databases and caches
 
-❌ **Not Suitable**
+**Not Suitable**
 - Desktop applications
 - Multi-purpose systems
 - Applications requiring GUI
@@ -80,11 +80,11 @@ Good candidates for appliances:
 
 ```bash
 # Create directory structure
-mkdir -p appliances/myapp/{files,profiles}
+mkdir -p appliances/myapp/files
 
 # Create required files
 touch appliances/myapp/appliance.yaml
-touch appliances/myapp/image.yaml
+touch appliances/myapp/config.yaml
 touch appliances/myapp/README.md
 ```
 
@@ -97,35 +97,18 @@ Minimal `appliance.yaml`:
 name: myapp
 version: "1.0.0"
 description: "Clear, concise description"
-base:
-  distribution: debian
-  release: bookworm
 ```
 
-Minimal `image.yaml`:
+Minimal `config.yaml`:
 ```yaml
-image:
-  distribution: debian
-  release: bookworm
-  description: "MyApp appliance"
-
-source:
-  downloader: debootstrap
-  url: https://deb.debian.org/debian
-  variant: minbase
-
-packages:
-  manager: apt
-  update: true
-  cleanup: true
-  sets:
-    - packages: [myapp]
-      action: install
-
-actions:
-  - trigger: post-packages
-    action: |-
-      systemctl enable myapp
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    packages:
+      - myapp
+    runcmd:
+      - systemctl enable myapp
 ```
 
 ### 4. Test Your Appliance
@@ -231,14 +214,13 @@ Example:
 name: myapp
 version: "1.0.0"  # Quoted to prevent interpretation as float
 
-packages:
-  manager: apt
-  sets:
-    - action: install
-      packages:
-        - package-a
-        - package-b
-        - package-c
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    packages:
+      - package-a
+      - package-b
+      - package-c
 ```
 
 ### Documentation
@@ -255,62 +237,45 @@ packages:
 
 1. **No default passwords**
    ```yaml
-   # ❌ Bad
-   actions:
-     - trigger: post-packages
-       action: echo "root:password123" | chpasswd
+   # Bad - never do this
+   runcmd:
+     - echo "root:password123" | chpasswd
 
-   # ✅ Good - use cloud-init
+   # Good - use cloud-init at launch time
    # Document in README how to set password via user-data
    ```
 
 2. **Run as non-root**
    ```yaml
-   actions:
-     - trigger: post-packages
-       action: |-
-         useradd --system --no-create-home --shell /usr/sbin/nologin myapp
-         systemctl enable myapp
+   runcmd:
+     - useradd --system --no-create-home --shell /usr/sbin/nologin myapp
+     - systemctl enable myapp
    ```
 
 3. **Minimal packages**
    ```yaml
    # Only install what's needed
    packages:
-     sets:
-       - packages: [myapp, ca-certificates]
-         action: install
+     - myapp
+     - ca-certificates
    ```
 
 ### Size Optimization
 
 1. **Use Debian as base**
-   - Use Debian Bookworm for reliable cloud-init support
-   - Provides broad compatibility with glibc
+   - The build system uses `images:debian/12/cloud`
+   - Provides reliable cloud-init support
 
-2. **Clean package cache**
-   ```yaml
-   packages:
-     cleanup: true  # Always enable
-   ```
-
-3. **Remove build dependencies**
-   ```yaml
-   packages:
-     sets:
-       - packages: [build-base, cmake]
-         action: install
-       # ... build software ...
-       - packages: [build-base, cmake]
-         action: remove
-   ```
+2. **Keep packages minimal**
+   - Only install necessary packages
+   - Build process automatically cleans package cache
 
 ### Documentation
 
 Every appliance must include:
 
 1. **appliance.yaml** — Metadata
-2. **image.yaml** — Build template
+2. **config.yaml** — Cloud-init configuration
 3. **README.md** with:
    - Quick start example
    - Configuration instructions
@@ -357,13 +322,13 @@ Example:
 ```markdown
 ## Add Redis Appliance
 
-Adds a Redis appliance based on Debian Bookworm.
+Adds a Redis appliance based on Debian Bookworm with cloud-init configuration.
 
 ### Features
 - Redis 7.0
 - Persistence enabled by default
 - Health check included
-- Cloud-init support
+- Cloud-init support for customization
 
 ### Testing
 - Built successfully on amd64
@@ -495,10 +460,8 @@ ls appliances/myapp/* | entr -s 'make build-myapp'
 ### Debugging Builds
 
 ```bash
-# Verbose distrobuilder output
-sudo distrobuilder build-incus \
-  appliances/myapp/image.yaml \
-  --debug
+# Check cloud-init logs during build
+# The build script shows cloud-init status
 
 # Inspect rootfs
 mkdir /tmp/rootfs
@@ -543,4 +506,4 @@ Don't hesitate to ask questions in:
 - GitHub Discussions
 - Pull Request comments
 
-Thank you for contributing! 🎉
+Thank you for contributing!

@@ -6,7 +6,7 @@ This document describes the technical architecture of the Incus Appliance Regist
 
 The registry implements the SimpleStreams protocol to serve Incus-compatible system container images over HTTPS. It consists of:
 
-1. **Build System** — Creates reproducible images from declarative templates
+1. **Build System** — Creates reproducible images using Incus and cloud-init
 2. **Registry** — Static file structure serving image metadata and downloads
 3. **Test Infrastructure** — Local development and validation tools
 
@@ -17,13 +17,14 @@ The registry implements the SimpleStreams protocol to serve Incus-compatible sys
 ```
 ┌─────────────────┐
 │ appliance.yaml  │  Metadata
-│ image.yaml      │  Build template
-│ files/          │  Embedded files
+│ config.yaml     │  Cloud-init configuration
+│ files/          │  Additional files
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ distrobuilder   │  Image builder
+│ Incus container │  Build environment
+│ cloud-init      │  Configuration
 └────────┬────────┘
          │
          ▼
@@ -46,25 +47,17 @@ The registry implements the SimpleStreams protocol to serve Incus-compatible sys
 └─────────────────┘
 ```
 
-#### distrobuilder
+#### Build Process
 
-Distrobuilder is the official image builder for LXC/Incus. It:
+The build system uses Incus directly to create appliance images:
 
-- Downloads base distribution images
-- Installs packages
-- Injects files
-- Runs post-processing actions
-- Outputs split images (metadata + rootfs)
-
-Template format:
-
-```yaml
-image:          # Image metadata
-source:         # Where to get base image
-packages:       # Packages to install
-files:          # Files to inject
-actions:        # Scripts to run
-```
+1. **Container Launch** — Creates a container from `images:debian/12/cloud`
+2. **Cloud-init Config** — Applies configuration before first boot
+3. **Cloud-init Execution** — Installs packages, creates files, runs commands
+4. **File Injection** — Copies additional files from `files/` directory
+5. **Post-files Commands** — Runs optional post-processing commands
+6. **Image Export** — Stops container and exports as split image
+7. **Registry Update** — Adds to SimpleStreams registry
 
 #### incus-simplestreams
 
@@ -182,7 +175,7 @@ Steps:
 5. **Import** — Add to local image store
 6. **Launch** — Create container from image
 
-### 4. Build Process
+### 4. Build Process Details
 
 #### Single Appliance Build
 
@@ -192,10 +185,15 @@ make build-nginx
 
 Flow:
 
-1. **Validation** — Check for required files
-2. **Prepare** — Copy template and files to `.build/`
-3. **Build** — Run distrobuilder
-4. **Register** — Add to SimpleStreams registry
+1. **Validation** — Check for required files (config.yaml)
+2. **Container Creation** — `incus init images:debian/12/cloud`
+3. **Cloud-init Setup** — Apply configuration from config.yaml
+4. **Container Start** — Boot and wait for cloud-init
+5. **File Copy** — Push files from files/ directory
+6. **Post-processing** — Run post_files commands
+7. **Cleanup** — Clean logs, caches, SSH keys
+8. **Export** — Publish and export as split image
+9. **Registry Add** — Add to SimpleStreams registry
 
 Script: [bin/build-appliance.sh](../bin/build-appliance.sh)
 
@@ -206,8 +204,8 @@ make build-all-arch
 ```
 
 For each architecture:
-- Set `image.architecture` parameter
-- Build with arch-specific base image
+- Launch arch-specific base image
+- Build with arch-specific output
 - Add to registry with arch-specific alias
 
 Example aliases:
@@ -257,19 +255,25 @@ make test-nginx
 ### Image Build Flow
 
 ```
-Template (YAML)
+config.yaml (cloud-init configuration)
     ↓
-distrobuilder
+Incus container creation
     ↓
-Base Image Download
+Cloud-init execution
     ↓
 Package Installation
     ↓
-File Injection
+File Creation (write_files)
     ↓
-Action Execution
+Command Execution (runcmd)
     ↓
-Image Generation (tar.xz + squashfs)
+File Injection (files/ directory)
+    ↓
+Post-files Commands
+    ↓
+Image Cleanup
+    ↓
+Image Export (tar.xz + squashfs)
     ↓
 Registry Addition
     ↓
@@ -291,7 +295,7 @@ Local Import
     ↓
 Container Creation
     ↓
-Cloud-init (if configured)
+Cloud-init (if user provides config)
     ↓
 Service Startup
 ```
@@ -329,6 +333,28 @@ Compressed read-only filesystem containing:
 
 Format: SquashFS (highly compressed)
 
+### config.yaml
+
+Cloud-init configuration for building the appliance:
+
+```yaml
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    packages:
+      - nginx
+    write_files:
+      - path: /etc/nginx/conf.d/default.conf
+        content: |
+          server { ... }
+    runcmd:
+      - systemctl enable nginx
+
+post_files: |
+  # Commands run after files/ copied
+  nginx -t
+```
+
 ### Registry JSON
 
 Generated and managed by `incus-simplestreams`:
@@ -341,9 +367,9 @@ Generated and managed by `incus-simplestreams`:
 ### Image Security
 
 1. **Build Process**
-   - Runs as root (required for chroot)
-   - Isolated build environment
-   - Reproducible from templates
+   - Runs in isolated container
+   - Automatic cleanup of sensitive data
+   - Reproducible from configuration
 
 2. **Distribution**
    - HTTPS required for registry
@@ -371,9 +397,9 @@ Generated and managed by `incus-simplestreams`:
 
 ### Build Performance
 
-- **Cache** — distrobuilder caches base images in `.cache/`
+- **Base Image Caching** — Incus caches base images locally
 - **Parallel** — Multiple appliances can build concurrently
-- **Incremental** — Only rebuild changed appliances
+- **Fast** — Builds typically complete in 1-3 minutes
 
 ### Registry Performance
 
@@ -386,8 +412,8 @@ Generated and managed by `incus-simplestreams`:
 
 Typical sizes:
 
-- **Debian-based**: 100-500MB
-- **Ubuntu-based**: 200-800MB
+- **Minimal appliance**: 100-200MB
+- **Full-featured appliance**: 200-500MB
 
 Compression ratios (SquashFS): ~3-5x
 
@@ -411,14 +437,13 @@ Static files scale horizontally:
 
 ## Extensibility
 
-### Custom Distributions
+### Custom Base Images
 
-Add new base distributions by creating source configs:
+While the default uses `images:debian/12/cloud`, the build script can be modified to use other bases:
 
-```yaml
-source:
-  downloader: custom-http
-  url: https://custom-distro.org/releases/
+```bash
+# In build script, change:
+$SUDO incus init "images:ubuntu/24.04/cloud/${ARCH}" "$BUILD_CONTAINER"
 ```
 
 ### Custom Metadata
@@ -472,10 +497,10 @@ incus launch appliance:nginx my-nginx --profile nginx-proxy
 ### Planned Features
 
 1. **VM Support** — Add VM image builds
-2. **Versioning** — Semantic versioning for appliances
+2. **Content Hashing** — Skip rebuilds when config unchanged
 3. **Dependencies** — Express appliance dependencies
 4. **Profiles** — Bundled Incus profiles
-5. **Cloud-init** — Enhanced cloud-init support
+5. **Web UI** — Generated landing page with appliance catalog
 
 ### Potential Integrations
 
@@ -489,5 +514,5 @@ incus launch appliance:nginx my-nginx --profile nginx-proxy
 
 - [SimpleStreams Specification](https://git.launchpad.net/simplestreams/tree/doc/README)
 - [Incus Image Format](https://linuxcontainers.org/incus/docs/main/image-handling/)
-- [Distrobuilder Documentation](https://distrobuilder.readthedocs.io/)
+- [cloud-init Documentation](https://cloudinit.readthedocs.io/)
 - [SquashFS Documentation](https://www.kernel.org/doc/Documentation/filesystems/squashfs.txt)

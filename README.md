@@ -15,7 +15,7 @@ The Incus Appliance Registry provides single-purpose system containers that comb
 - **Native Integration** — Works with Incus's existing remote/image model
 - **System Containers** — Full init system, SSH access, native networking
 - **Unified Management** — Snapshots, live migration, resource limits
-- **Reproducible Builds** — All appliances defined with distrobuilder templates
+- **Reproducible Builds** — All appliances defined with cloud-init configuration
 - **GitOps Ready** — Version-controlled configuration and CI/CD support
 
 ## Quick Start
@@ -23,8 +23,7 @@ The Incus Appliance Registry provides single-purpose system containers that comb
 ### Prerequisites
 
 - Incus (>= 6.0)
-- distrobuilder
-- sudo access (for building images)
+- incus-simplestreams (for registry management)
 - Python 3 (for local testing server)
 - OpenSSL (for test certificates)
 
@@ -73,28 +72,27 @@ make test
 | Name | Description | Base | Size |
 |------|-------------|------|------|
 | [nginx](appliances/nginx/) | Reverse proxy and web server | Debian Bookworm | ~150MB |
-
-More appliances coming soon: postgres, redis, traefik, caddy
+| [postgresql](appliances/postgresql/) | PostgreSQL database server | Debian Bookworm | ~200MB |
+| [redis](appliances/redis/) | In-memory data store | Debian Bookworm | ~120MB |
+| [atlantis](appliances/atlantis/) | Terraform/OpenTofu GitOps | Debian Bookworm | ~250MB |
 
 ## Project Structure
 
 ```
 incus-appliance/
 ├── appliances/           # Appliance definitions
-│   ├── _base/           # Shared base configurations
 │   └── nginx/           # Nginx appliance
-│       ├── appliance.yaml    # Metadata
-│       ├── image.yaml        # Distrobuilder template
+│       ├── appliance.yaml    # Metadata (version, ports, etc.)
+│       ├── config.yaml       # Cloud-init configuration
 │       ├── files/            # Files to embed
 │       └── README.md         # Documentation
-├── bin/                 # VM runtime scripts (sparse checkout)
+├── bin/                 # Core build scripts
 │   ├── build-appliance.sh   # Build single appliance
 │   ├── validate.sh          # Validate templates
 │   └── test-appliance.sh    # Test launcher
 ├── scripts/             # Host orchestration scripts
-│   ├── setup-build-vm.sh    # Create build VM
-│   ├── build-remote.sh      # Build using VM
-│   └── serve-local.sh       # Local test server
+│   ├── serve-local.sh       # Local test server
+│   └── publish.sh           # Deploy to production
 ├── registry/            # Generated SimpleStreams registry (gitignored)
 ├── Makefile            # Build automation
 └── README.md           # This file
@@ -109,7 +107,7 @@ See [docs/creating-appliances.md](docs/creating-appliances.md) for a detailed gu
 1. Create the appliance directory:
 
 ```bash
-mkdir -p appliances/myapp/{files,profiles}
+mkdir -p appliances/myapp/files
 ```
 
 2. Create `appliances/myapp/appliance.yaml`:
@@ -118,37 +116,20 @@ mkdir -p appliances/myapp/{files,profiles}
 name: myapp
 version: "1.0.0"
 description: "My awesome appliance"
-base:
-  distribution: debian
-  release: bookworm
 ```
 
-3. Create `appliances/myapp/image.yaml`:
+3. Create `appliances/myapp/config.yaml`:
 
 ```yaml
-image:
-  distribution: debian
-  release: bookworm
-  description: "My awesome appliance"
-
-source:
-  downloader: debootstrap
-  url: https://deb.debian.org/debian
-  variant: minbase
-
-packages:
-  manager: apt
-  update: true
-  cleanup: true
-  sets:
-    - packages:
-        - myapp
-      action: install
-
-actions:
-  - trigger: post-packages
-    action: |-
-      systemctl enable myapp
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    packages:
+      - myapp
+    runcmd:
+      - systemctl enable myapp
+      - systemctl start myapp
 ```
 
 4. Build and test:
@@ -315,11 +296,11 @@ incus-simplestreams remove <path> <fingerprint>
 
 ### Build Process
 
-1. **Template Processing** — distrobuilder reads `image.yaml`
-2. **Image Creation** — Downloads base image, installs packages, runs actions
-3. **Output Generation** — Creates `incus.tar.xz` (metadata) and `rootfs.squashfs`
-4. **Registry Addition** — `incus-simplestreams` adds to SimpleStreams registry
-5. **Index Update** — Registry JSON files updated automatically
+1. **Container Launch** — Launches container from `images:debian/12/cloud`
+2. **Cloud-init Configuration** — Applies packages, files, and commands from `config.yaml`
+3. **File Injection** — Copies additional files from `files/` directory
+4. **Image Creation** — Stops container, publishes and exports as `incus.tar.xz` and `rootfs.squashfs`
+5. **Registry Addition** — `incus-simplestreams` adds to SimpleStreams registry
 
 ### Image Components
 
@@ -359,8 +340,8 @@ make build-all-arch
 ### Debugging Builds
 
 ```bash
-# Build with verbose output
-sudo distrobuilder build-incus appliances/nginx/image.yaml --debug
+# Build with verbose output (check cloud-init logs)
+./bin/build-appliance.sh nginx
 
 # Check generated files
 ls -lh .build/nginx/amd64/
@@ -379,22 +360,25 @@ sudo umount /tmp/rootfs
 
 ### Build Failures
 
-**Error: distrobuilder not found**
+**Error: Incus not found**
 ```bash
-# Install distrobuilder
-snap install distrobuilder --classic
+# Install Incus
+sudo apt install incus
+# Or via snap
+sudo snap install incus --channel=latest/stable
 ```
 
 **Error: Permission denied**
 ```bash
-# distrobuilder requires sudo for chroot operations
-sudo ./bin/build-appliance.sh nginx
+# Add user to incus group
+sudo usermod -aG incus $USER
+# Log out and back in
 ```
 
-**Error: Failed to download**
+**Error: cloud-init timeout**
 ```bash
-# Clear distrobuilder cache
-rm -rf .cache/distrobuilder
+# Check cloud-init status in build output
+# Increase timeout in build script if needed
 ```
 
 ### Registry Issues
@@ -452,7 +436,7 @@ A: Rebuild the image with a new version number. Incus will fetch the latest vers
 
 **Q: Can I create VM images?**
 
-A: Yes, distrobuilder supports VM images. Change `--type=split` to `--type=unified` and configure VM-specific settings in `image.yaml`.
+A: The current build process creates container images. VM support may be added in the future.
 
 **Q: How do I handle secrets?**
 
@@ -474,7 +458,7 @@ This project uses **GitHub Flow** for all changes:
 
 1. Create feature branch: `git checkout -b feature/add-myapp`
 2. Create appliance definition in `appliances/<name>/`
-3. Add `appliance.yaml`, `image.yaml`, and `README.md`
+3. Add `appliance.yaml`, `config.yaml`, and `README.md`
 4. Test: `make build-<name> && make test-<name>`
 5. Submit pull request with clear description
 
@@ -485,7 +469,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Resources
 
 - [Incus Documentation](https://linuxcontainers.org/incus/docs/main/)
-- [Distrobuilder Repository](https://github.com/lxc/distrobuilder)
+- [cloud-init Documentation](https://cloudinit.readthedocs.io/)
 - [SimpleStreams Specification](https://git.launchpad.net/simplestreams/tree/doc/README)
 - [Incus Image Server](https://images.linuxcontainers.org/)
 
@@ -493,5 +477,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 Built with:
 - [Incus](https://linuxcontainers.org/incus/) — Modern container and VM manager
-- [Distrobuilder](https://github.com/lxc/distrobuilder) — Image builder for LXC/Incus
+- [cloud-init](https://cloud-init.io/) — Cloud instance initialization
 - [SimpleStreams](https://launchpad.net/simplestreams) — Image metadata protocol
