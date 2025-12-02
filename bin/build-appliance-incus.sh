@@ -18,17 +18,18 @@ ARCH="${2:-$(uname -m)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 APPLIANCE_DIR="${PROJECT_ROOT}/appliances/${APPLIANCE}"
-BUILD_DIR="${PROJECT_ROOT}/.build/${APPLIANCE}/${ARCH}"
 REGISTRY_DIR="${PROJECT_ROOT}/registry"
 
-# Container name for build (unique to avoid conflicts in parallel builds)
-BUILD_CONTAINER="build-${APPLIANCE}-${ARCH}-$$"
-
-# Normalize architecture names
+# Normalize architecture names (must happen before BUILD_DIR and BUILD_CONTAINER)
 case "$ARCH" in
   x86_64) ARCH="amd64" ;;
   aarch64) ARCH="arm64" ;;
 esac
+
+BUILD_DIR="${PROJECT_ROOT}/.build/${APPLIANCE}/${ARCH}"
+
+# Container name for build (unique to avoid conflicts in parallel builds)
+BUILD_CONTAINER="build-${APPLIANCE}-${ARCH}-$$"
 
 # Extract version from appliance.yaml (default to 0.0.0 if not found)
 VERSION="0.0.0"
