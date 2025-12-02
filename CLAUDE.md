@@ -18,9 +18,9 @@ Appliances are built using Incus directly with cloud-init for configuration. Bui
 
 ```bash
 # Build a single appliance
-./bin/build-appliance-incus.sh <appliance-name> [architecture]
-./bin/build-appliance-incus.sh nginx
-./bin/build-appliance-incus.sh nginx arm64
+./bin/build-appliance.sh <appliance-name> [architecture]
+./bin/build-appliance.sh nginx
+./bin/build-appliance.sh nginx arm64
 
 # Build all appliances
 ./bin/build-all.sh
@@ -150,15 +150,13 @@ Incus client fetches and launches
     - `README.md` — User documentation
 
 - **`bin/`** — Core build and test scripts
-  - `build-appliance-incus.sh` — Build single appliance using Incus
+  - `build-appliance.sh` — Build single appliance using Incus
   - `build-all.sh` — Build all appliances
   - `validate.sh` — Template validation
   - `test-appliance.sh` — Integration testing
 
 - **`scripts/`** — Host orchestration and deployment
   - `serve-local.sh` — Local test server
-  - `setup-build-vm.sh` — Create build VM
-  - `build-remote.sh` — Build using VM
   - `publish.sh` — Deploy to production
 
 - **`registry/`** — Generated SimpleStreams registry (gitignored)
@@ -234,7 +232,7 @@ mkdir -p appliances/myapp/files
 # 5. Create README.md documenting usage
 
 # 6. Build and test
-./bin/build-appliance-incus.sh myapp
+./bin/build-appliance.sh myapp
 ./bin/test-appliance.sh myapp appliance-test
 ```
 
@@ -257,7 +255,7 @@ All appliances are built from `images:debian/12/cloud` which includes:
 
 ## Testing Workflow
 
-1. **Build** — `./bin/build-appliance-incus.sh <name>`
+1. **Build** — `./bin/build-appliance.sh <name>`
 2. **Start server** — `./scripts/serve-local.sh &`
 3. **Add remote** — `incus remote add test https://localhost:8443 --protocol simplestreams --accept-certificate`
 4. **Launch** — `incus launch test:<name> test-instance`
@@ -328,7 +326,6 @@ The build script normalizes architecture names:
 - **Creating appliances**: docs/creating-appliances.md (comprehensive guide with examples)
 - **Architecture**: docs/architecture.md (technical deep dive)
 - **Deployment**: docs/deployment.md (production deployment options)
-- **VM builds**: docs/vm-build-setup.md (building in containers/devcontainers using VMs)
 - **Versioning**: docs/versioning.md (semantic versioning policy and image aliases)
 - **Contributing**: CONTRIBUTING.md (contribution guidelines and standards)
 

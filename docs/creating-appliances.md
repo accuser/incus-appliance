@@ -6,11 +6,10 @@ This guide walks you through creating a new appliance for the Incus Appliance Re
 
 An appliance consists of:
 
-1. **appliance.yaml** — Metadata about the appliance (optional but recommended)
-2. **image.yaml** — Distrobuilder template defining the image build process
-3. **files/** — Files to embed in the image
+1. **appliance.yaml** — Metadata about the appliance (version, ports, healthcheck, etc.)
+2. **config.yaml** — Cloud-init configuration defining packages, files, and commands
+3. **files/** — Additional files to copy into the image
 4. **README.md** — User documentation
-5. **profiles/** — Optional Incus profiles (optional)
 
 Additionally, you must register your appliance in the root **appliances.yaml** manifest file for it to be built by CI/CD.
 
@@ -48,46 +47,6 @@ appliances:
 | `appliances[].architectures` | No | Inherits from defaults | Override architectures for this appliance |
 | `appliances[].enabled` | No | Inherits from defaults | Set `false` to skip building this appliance |
 
-### How CI/CD Uses This File
-
-The GitHub Actions workflow reads `appliances.yaml` to:
-
-1. **Generate build matrix** — Creates parallel build jobs for each appliance/architecture combination
-2. **Filter enabled appliances** — Skips appliances with `enabled: false`
-3. **Read versions** — Version is sourced from each appliance's `appliance.yaml` file (not from this manifest)
-4. **Generate registry metadata** — Uses descriptions for the SimpleStreams index and GitHub Pages
-
-### Example: Full Manifest
-
-```yaml
-# appliances.yaml - Registry manifest
-
-defaults:
-  architectures:
-    - amd64
-    - arm64
-  enabled: true
-
-appliances:
-  # Production-ready appliances
-  - name: nginx
-    description: High-performance web server and reverse proxy
-
-  - name: postgres
-    description: PostgreSQL database server with replication support
-
-  # Architecture-specific appliance
-  - name: arm-optimized-app
-    description: Application optimized for ARM processors
-    architectures:
-      - arm64
-
-  # Temporarily disabled appliance
-  - name: experimental-app
-    description: Experimental application (under development)
-    enabled: false
-```
-
 ### Adding Your Appliance to the Manifest
 
 After creating your appliance directory and files, add an entry to `appliances.yaml`:
@@ -107,7 +66,7 @@ The version is automatically read from your appliance's `appliances/myapp/applia
 ### 1. Create Directory Structure
 
 ```bash
-mkdir -p appliances/myapp/{files,profiles}
+mkdir -p appliances/myapp/files
 cd appliances/myapp
 ```
 
@@ -128,11 +87,6 @@ architectures:
 types:
   - container
 
-base:
-  distribution: debian
-  release: bookworm
-
-# cloud-init support (recommended)
 cloud_init: true
 
 requirements:
@@ -174,234 +128,175 @@ see_also:
   - alternative-app
 ```
 
-### 3. Create image.yaml
+### 3. Create config.yaml
 
-This is the distrobuilder template that defines how to build the image:
+This is the cloud-init configuration that defines how to build the image:
 
 ```yaml
-image:
-  distribution: debian
-  release: bookworm
-  description: "MyApp appliance"
+# config.yaml - Incus cloud-init configuration
+# This file configures the container using cloud-init
 
-source:
-  downloader: debootstrap
-  url: http://deb.debian.org/debian
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
 
-packages:
-  manager: apt
-  update: true
-  cleanup: true
-  sets:
-    - packages:
-        # Base system
-        - ca-certificates
-        - curl
-        - tzdata
-        - logrotate
-        # cloud-init for last-mile configuration
-        - cloud-init
-        # systemd for service management
-        - systemd
-        - systemd-sysv
-        - dbus
-        # Application
-        - myapp
-      action: install
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Application
+      - myapp
 
-files:
-  - path: /etc/myapp/config.yml
-    generator: copy
-    source: files/config.yml
-    mode: "0644"
+    write_files:
+      - path: /etc/myapp/config.yml
+        permissions: '0644'
+        content: |
+          # MyApp configuration
+          port: 8080
+          log_level: info
 
-  - path: /etc/motd
-    generator: dump
-    content: |-
-      MyApp Appliance
-      Configuration: /etc/myapp/
-      Logs: /var/log/myapp/
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            MyApp Appliance
+            Incus Appliance Registry
+          =====================================================
+            Config: /etc/myapp/
+            Logs:   /var/log/myapp/
+            Status: systemctl status myapp
+          =====================================================
 
-      Supports cloud-init for automated configuration.
-    mode: "0644"
+          Supports cloud-init for automated configuration.
+          See: incus config set <instance> cloud-init.user-data ...
 
-  - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
-    generator: dump
-    content: |-
-      datasource_list: [LXD]
-      datasource:
-        LXD:
-          apply_network_config: true
-    mode: "0644"
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
 
-actions:
-  - trigger: post-unpack
-    action: |-
+    runcmd:
       # Create necessary directories
-      mkdir -p /var/lib/myapp/data
-      mkdir -p /var/log/myapp
-
-  - trigger: post-packages
-    action: |-
+      - mkdir -p /var/lib/myapp/data
+      - mkdir -p /var/log/myapp
       # Enable service at boot
-      systemctl enable myapp
-
-      # Enable cloud-init services
-      systemctl enable cloud-init-local.service
-      systemctl enable cloud-init.service
-      systemctl enable cloud-config.service
-      systemctl enable cloud-final.service
-
-      # Disable unnecessary services
-      systemctl disable apt-daily.timer || true
-      systemctl disable apt-daily-upgrade.timer || true
-
-      # Create user
-      useradd -r -s /sbin/nologin myapp
-
-  - trigger: post-files
-    action: |-
+      - systemctl enable myapp
+      # Create user if needed
+      - useradd -r -s /sbin/nologin myapp || true
       # Set permissions
-      chown -R myapp:myapp /var/lib/myapp
-      chown -R myapp:myapp /var/log/myapp
-      chmod 755 /etc/myapp
+      - chown -R myapp:myapp /var/lib/myapp
+      - chown -R myapp:myapp /var/log/myapp
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true
 
-      # Clean up
-      apt-get clean
-      rm -rf /var/lib/apt/lists/*
+# Optional: Commands to run after files/ directory is copied
+# Use this for setup that depends on files copied from files/
+post_files: |
+  # Set permissions on copied files
+  chmod 755 /etc/myapp/*.sh
+  chown -R myapp:myapp /etc/myapp
 ```
 
-## Distribution-Specific Examples
+## Cloud-init Configuration
 
-### Debian (Recommended)
+The `config.yaml` uses Incus's cloud-init configuration. The `cloud-init.user-data` field contains a standard cloud-config document.
 
-Best for: Most appliances — reliable cloud-init support, broad compatibility
+### Key Sections
+
+#### packages
+
+Install packages from the distribution's repositories:
 
 ```yaml
-image:
-  distribution: debian
-  release: bookworm
-
-source:
-  downloader: debootstrap
-  url: http://deb.debian.org/debian
-
 packages:
-  manager: apt
-  update: true
-  cleanup: true
+  - nginx
+  - curl
+  - ca-certificates
 ```
 
-**Pros**: Native cloud-init support, wide compatibility, glibc, extensive packages
-**Cons**: Larger size than Alpine (~100-500MB vs ~20-100MB)
+#### write_files
 
-### Ubuntu
-
-Best for: Software with PPAs or requiring newer packages
+Create files with specific content and permissions:
 
 ```yaml
-image:
-  distribution: ubuntu
-  release: jammy
-
-source:
-  downloader: ubuntu-http
-  url: http://archive.ubuntu.com/ubuntu
-
-packages:
-  manager: apt
-  update: true
-  cleanup: true
+write_files:
+  - path: /etc/myapp/config.yaml
+    permissions: '0644'
+    owner: myapp:myapp
+    content: |
+      setting: value
 ```
 
-**Pros**: PPAs, newer packages, commercial support
-**Cons**: Larger size, similar to Debian
+#### runcmd
 
-## File Generators
-
-### copy - Copy Static Files
+Run commands after the system boots:
 
 ```yaml
-files:
-  - path: /etc/nginx/nginx.conf
-    generator: copy
-    source: files/nginx.conf
-    mode: "0644"
+runcmd:
+  - systemctl enable myapp
+  - mkdir -p /var/lib/myapp
+  - chown myapp:myapp /var/lib/myapp
 ```
 
-### dump - Inline Content
+#### users
+
+Create system users:
 
 ```yaml
-files:
-  - path: /etc/profile.d/myapp.sh
-    generator: dump
-    content: |-
-      export MYAPP_HOME=/opt/myapp
-      export PATH=$PATH:$MYAPP_HOME/bin
-    mode: "0644"
+users:
+  - name: myapp
+    system: true
+    shell: /sbin/nologin
+    groups: [myapp]
 ```
 
-### template - Go Templates
+### The post_files Section
+
+The optional `post_files` section runs shell commands after the `files/` directory contents are copied into the container. Use this for:
+
+- Setting permissions on copied files
+- Running configuration scripts from files/
+- Validating configuration
 
 ```yaml
-files:
-  - path: /etc/myapp/config.yml
-    generator: template
-    template:
-      properties:
-        hostname: "{{ .Hostname }}"
-        release: "{{ .Release }}"
-    mode: "0644"
+post_files: |
+  # Validate configuration
+  myapp --validate-config /etc/myapp/config.yaml
+  # Set permissions
+  chmod 600 /etc/myapp/secrets.conf
 ```
 
-## Actions and Triggers
+## Using the files/ Directory
 
-Actions run at different stages of the build:
+For files that are too large for inline content or are binary, place them in the `files/` directory. The directory structure mirrors the target filesystem:
 
-### post-unpack
-
-Runs after base system is unpacked, before packages:
-
-```yaml
-actions:
-  - trigger: post-unpack
-    action: |-
-      # Create directories
-      mkdir -p /opt/myapp
-      # Download files
-      wget -O /tmp/app.tar.gz https://example.com/app.tar.gz
+```
+appliances/myapp/
+├── config.yaml
+├── appliance.yaml
+└── files/
+    ├── etc/
+    │   └── myapp/
+    │       └── large-config.json
+    └── usr/
+        └── local/
+            └── bin/
+                └── helper-script.sh
 ```
 
-### post-packages
-
-Runs after packages are installed:
-
-```yaml
-actions:
-  - trigger: post-packages
-    action: |-
-      # Enable services
-      systemctl enable myapp
-
-      # Create users
-      useradd -r -s /bin/false myapp
-```
-
-### post-files
-
-Runs after files are generated:
-
-```yaml
-actions:
-  - trigger: post-files
-    action: |-
-      # Set permissions
-      chown -R myapp:myapp /var/lib/myapp
-      chmod 600 /etc/myapp/secrets.conf
-
-      # Run initialization
-      /opt/myapp/bin/init-db
-```
+These files are copied to the container after cloud-init completes, maintaining their directory structure.
 
 ## Best Practices
 
@@ -410,22 +305,20 @@ actions:
 1. **No default passwords** — Use cloud-init or profiles to set credentials
 2. **Principle of least privilege** — Run services as non-root users
 3. **Minimal packages** — Only install what's needed
-4. **Regular updates** — Pin versions in templates, update regularly
-5. **No secrets in images** — Use external configuration
+4. **No secrets in images** — Use external configuration
 
 ### Size Optimization
 
-1. **Clean package cache** — Enable `cleanup: true` and run `apt-get clean`
-2. **Remove unnecessary packages** — Minimal package sets
-3. **Multi-stage builds** — Build dependencies in separate container
-4. **Compress static content** — Pre-compress large files
+1. **Use package_upgrade: false** — Avoid upgrading all packages during build
+2. **Minimal package sets** — Only install what's necessary
+3. **Clean up in cloud-init** — The build process cleans package cache automatically
 
 ### Reliability
 
 1. **Health checks** — Always include a working health check
 2. **Graceful shutdown** — Handle SIGTERM properly
 3. **Data persistence** — Document which directories to persist
-4. **Idempotent actions** — Scripts should be safe to run multiple times
+4. **Idempotent commands** — runcmd scripts should be safe to run multiple times
 5. **Error handling** — Validate configuration on startup
 
 ### Documentation
@@ -448,6 +341,8 @@ make validate
 
 ```bash
 make build-myapp
+# Or directly:
+./bin/build-appliance.sh myapp
 ```
 
 ### 3. Test Launch
@@ -494,6 +389,7 @@ incus exec test-instance -- bash
 ### Database Appliance
 
 ```yaml
+# appliance.yaml
 volumes:
   - path: /var/lib/postgresql/data
     description: "Database files (MUST be persisted)"
@@ -501,14 +397,20 @@ volumes:
 healthcheck:
   command: "pg_isready -U postgres"
 
-environment:
-  - name: POSTGRES_PASSWORD
-    description: "Database superuser password (set via cloud-init)"
+# config.yaml
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    packages:
+      - postgresql
+    runcmd:
+      - systemctl enable postgresql
 ```
 
 ### Web Service
 
 ```yaml
+# appliance.yaml
 ports:
   - port: 80
     protocol: tcp
@@ -526,15 +428,27 @@ volumes:
 ### Caching Service
 
 ```yaml
+# appliance.yaml
 requirements:
   recommended_memory: 1GB
 
 healthcheck:
   command: "redis-cli ping | grep PONG"
 
-environment:
-  - name: REDIS_MAXMEMORY
-    default: "256mb"
+# config.yaml
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    packages:
+      - redis-server
+    write_files:
+      - path: /etc/redis/redis-appliance.conf
+        content: |
+          bind 0.0.0.0
+          maxmemory 256mb
+    runcmd:
+      - echo "include /etc/redis/redis-appliance.conf" >> /etc/redis/redis.conf
+      - systemctl enable redis-server
 ```
 
 ## Troubleshooting Build Issues
@@ -545,49 +459,46 @@ environment:
 # Search Debian packages at: https://packages.debian.org/
 
 # Add backports repository if needed
-actions:
-  - trigger: post-unpack
-    action: |-
-      echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list.d/backports.list
+runcmd:
+  - echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list.d/backports.list
+  - apt-get update
+  - apt-get install -y mypackage/bookworm-backports
 ```
 
 ### Service Won't Start
 
 ```yaml
 # Check service name
-actions:
-  - trigger: post-packages
-    action: |-
-      # List available services
-      systemctl list-unit-files
-      # Enable the correct one
-      systemctl enable myserviced
+runcmd:
+  # List available services
+  - systemctl list-unit-files | grep myapp
+  # Enable the correct one
+  - systemctl enable myapp.service
 ```
 
 ### Permission Errors
 
 ```yaml
-actions:
-  - trigger: post-files
-    action: |-
-      # Create user first
-      useradd -r -s /sbin/nologin myapp
-      # Then set ownership
-      chown -R myapp:myapp /var/lib/myapp
-      # Check permissions
-      ls -la /var/lib/myapp
+runcmd:
+  # Create user first
+  - useradd -r -s /sbin/nologin myapp
+  # Then set ownership
+  - chown -R myapp:myapp /var/lib/myapp
+  # Check permissions
+  - ls -la /var/lib/myapp
 ```
 
-### File Not Found
+### Cloud-init Timeout
 
-```yaml
-# Ensure files directory exists
-# appliances/myapp/files/config.yml must exist
+If cloud-init times out during build:
+- Check for network issues (package downloads)
+- Reduce the number of packages being installed
+- Check for errors in cloud-init syntax
 
-files:
-  - path: /etc/myapp/config.yml
-    generator: copy
-    source: files/config.yml  # Relative to appliances/myapp/
+```bash
+# Debug cloud-init in a running container
+incus exec <container> -- cloud-init status --long
+incus exec <container> -- cat /var/log/cloud-init-output.log
 ```
 
 ## Advanced Topics
@@ -597,65 +508,31 @@ files:
 ```bash
 # Build for specific arch
 make build-myapp ARCH=arm64
-
-# Image.yaml uses variable
-image:
-  architecture: ${ARCH}
 ```
 
 ### Custom Repositories
 
 ```yaml
-# Debian backports
-actions:
-  - trigger: post-unpack
-    action: |-
-      echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list.d/backports.list
-      apt-get update
+runcmd:
+  # Add custom APT repository
+  - curl -fsSL https://example.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/example.gpg
+  - echo "deb [signed-by=/usr/share/keyrings/example.gpg] https://example.com/apt stable main" > /etc/apt/sources.list.d/example.list
+  - apt-get update
+  - apt-get install -y custom-package
 ```
 
-### Cloud-init Integration
+### Cloud-init for End Users
 
-Cloud-init is recommended for all appliances. Configure the Incus/LXD datasource:
-
-```yaml
-# Include cloud-init
-packages:
-  sets:
-    - packages:
-        - cloud-init
-      action: install
-
-# Configure cloud-init for Incus
-files:
-  - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
-    generator: dump
-    content: |-
-      datasource_list: [LXD]
-      datasource:
-        LXD:
-          apply_network_config: true
-
-# Enable cloud-init services in post-packages
-actions:
-  - trigger: post-packages
-    action: |-
-      systemctl enable cloud-init-local.service
-      systemctl enable cloud-init.service
-      systemctl enable cloud-config.service
-      systemctl enable cloud-final.service
-```
-
-Users can then configure appliances at launch time:
+Users can further configure appliances at launch time:
 
 ```bash
 incus init appliance:myapp my-instance
 incus config set my-instance cloud-init.user-data - << 'EOF'
 #cloud-config
 write_files:
-  - path: /etc/myapp/config.yml
+  - path: /etc/myapp/custom.conf
     content: |
-      setting: value
+      custom_setting: value
 runcmd:
   - systemctl restart myapp
 EOF
@@ -679,8 +556,9 @@ When submitting a new appliance:
 
 Study these reference implementations:
 
-- [nginx](../appliances/nginx/) — Minimal, well-documented
-- More examples coming soon
+- [nginx](../appliances/nginx/) — Web server with cloud-init configuration
+- [redis](../appliances/redis/) — In-memory cache with persistence
+- [postgresql](../appliances/postgresql/) — Database server
 
 ## Getting Help
 

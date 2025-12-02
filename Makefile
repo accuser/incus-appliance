@@ -20,7 +20,7 @@ build: ## Build all appliances
 	done
 
 build-%: ## Build specific appliance (e.g., make build-nginx)
-	@./bin/build-appliance-incus.sh $* $(ARCH)
+	@./bin/build-appliance.sh $* $(ARCH)
 
 build-all-arch: ## Build all appliances for all architectures
 	@for app in $(APPLIANCES); do \

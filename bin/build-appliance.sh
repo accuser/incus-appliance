@@ -204,7 +204,9 @@ $SUDO incus stop "$BUILD_CONTAINER"
 # Publish as image
 echo "==> Publishing container as image..."
 IMAGE_ALIAS="appliance-${APPLIANCE}-${ARCH}-build"
-$SUDO incus publish "$BUILD_CONTAINER" --alias "$IMAGE_ALIAS" --force
+# Delete any existing image with this alias to avoid conflicts
+$SUDO incus image delete "$IMAGE_ALIAS" 2>/dev/null || true
+$SUDO incus publish "$BUILD_CONTAINER" --alias "$IMAGE_ALIAS"
 
 # Export the image as a unified tarball
 echo "==> Exporting image..."

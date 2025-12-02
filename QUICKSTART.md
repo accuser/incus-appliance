@@ -6,13 +6,17 @@ Get up and running with the Incus Appliance Registry in 5 minutes.
 
 ```bash
 # Install Incus (if not already installed)
+sudo apt install incus
+# Or via snap
 sudo snap install incus --channel=latest/stable
 
 # Initialize Incus (if first time)
 incus admin init --minimal
 
-# Install distrobuilder
-sudo snap install distrobuilder --classic
+# Install incus-simplestreams for registry management
+sudo apt install incus-simplestreams
+# Or via snap
+sudo snap install incus-simplestreams --classic
 ```
 
 ## Build Your First Appliance
@@ -22,22 +26,27 @@ sudo snap install distrobuilder --classic
 git clone https://github.com/yourusername/incus-appliance
 cd incus-appliance
 
-# Build the nginx appliance (requires sudo for chroot)
-sudo ./bin/build-appliance.sh nginx
+# Build the nginx appliance
+./bin/build-appliance.sh nginx
 ```
 
 This will:
-1. Download Debian Bookworm base image (cached for future builds)
-2. Install nginx and dependencies
-3. Configure the appliance
+1. Launch a container from `images:debian/12/cloud`
+2. Apply cloud-init configuration (install nginx, configure services)
+3. Export as a reusable image
 4. Add to local SimpleStreams registry
 
 Expected output:
 ```
-==> Building appliance: nginx (amd64)
-==> Running distrobuilder...
+==> Building appliance: nginx v1.0.0 (amd64)
+==> Creating build container from images:debian/12/cloud...
+==> Applying cloud-init configuration...
+==> Starting container...
+==> Waiting for cloud-init to complete...
+==> cloud-init completed
+==> Publishing container as image...
 ==> Adding to SimpleStreams registry...
-==> Successfully built: nginx (amd64)
+==> Successfully built: nginx v1.0.0 (amd64)
     Registry: /home/user/incus-appliance/registry
 ```
 
@@ -170,7 +179,6 @@ registry/                        # Generated SimpleStreams registry
     └── rootfs.squashfs         # Root filesystem
 
 .build/nginx/amd64/             # Build artifacts
-.cache/distrobuilder/           # Downloaded base images (reused)
 .certs/                         # Test SSL certificates
 ```
 
@@ -179,15 +187,14 @@ registry/                        # Generated SimpleStreams registry
 ### Build fails
 
 ```bash
-# Check distrobuilder is installed
-distrobuilder --version
+# Check Incus is running
+incus info
 
-# Run with sudo (required for chroot)
-sudo ./bin/build-appliance.sh nginx
+# Check user has permissions (should be in incus group)
+groups
 
-# Clear cache and retry
-rm -rf .cache .build
-sudo ./bin/build-appliance.sh nginx
+# Check cloud-init logs if timeout
+incus exec <container> -- cat /var/log/cloud-init-output.log
 ```
 
 ### Can't connect to test server
