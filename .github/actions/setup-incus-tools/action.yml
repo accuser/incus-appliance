@@ -63,12 +63,42 @@ runs:
     - name: Initialize Incus
       shell: bash
       run: |
-        # Check if Incus is already initialized by looking for the default profile
-        if ! sudo incus profile show default &> /dev/null; then
-          echo "Initializing Incus with minimal preseed..."
-          sudo incus admin init --minimal
+        # Check if Incus is already initialized by looking for storage pools
+        if ! sudo incus storage list 2>/dev/null | grep -q "default"; then
+          echo "Initializing Incus with preseed configuration..."
+          cat <<EOF | sudo incus admin init --preseed
+        config: {}
+        networks:
+        - config:
+            ipv4.address: auto
+            ipv6.address: none
+          description: ""
+          name: incusbr0
+          type: bridge
+        storage_pools:
+        - config:
+            source: /var/lib/incus/storage-pools/default
+          description: ""
+          name: default
+          driver: dir
+        profiles:
+        - config: {}
+          description: Default Incus profile
+          devices:
+            eth0:
+              name: eth0
+              network: incusbr0
+              type: nic
+            root:
+              path: /
+              pool: default
+              type: disk
+          name: default
+        projects: []
+        EOF
+          echo "Incus initialized successfully"
         else
-          echo "Incus already initialized"
+          echo "Incus already initialized with storage pool"
         fi
 
     - name: Configure user permissions
@@ -88,5 +118,11 @@ runs:
         echo "Incus version: $(incus --version)"
         echo "incus-simplestreams version: $(incus-simplestreams --version)"
         echo ""
-        echo "Incus status:"
-        sudo incus info | head -20
+        echo "Storage pools:"
+        sudo incus storage list
+        echo ""
+        echo "Networks:"
+        sudo incus network list
+        echo ""
+        echo "Default profile:"
+        sudo incus profile show default
