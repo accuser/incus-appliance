@@ -145,8 +145,6 @@ jobs:
 
       - name: Setup Incus tools
         uses: ./.github/actions/setup-incus-tools
-        with:
-          extra-packages: yq
 
       - name: Build appliance with Incus
         run: |

@@ -60,6 +60,17 @@ runs:
           echo "All required packages already installed"
         fi
 
+    - name: Install yq
+      shell: bash
+      run: |
+        if ! command -v yq &> /dev/null; then
+          echo "Installing yq..."
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)
+          sudo chmod +x /usr/local/bin/yq
+        else
+          echo "yq already installed: $(yq --version)"
+        fi
+
     - name: Initialize Incus
       shell: bash
       run: |
