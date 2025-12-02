@@ -81,11 +81,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Launch container from Debian 12 cloud image
-echo "==> Launching build container from images:debian/12/cloud..."
-$SUDO incus launch "images:debian/12/cloud/${ARCH}" "$BUILD_CONTAINER"
+# Create container from Debian 12 cloud image (don't start yet)
+echo "==> Creating build container from images:debian/12/cloud..."
+$SUDO incus init "images:debian/12/cloud/${ARCH}" "$BUILD_CONTAINER"
 
-# Apply cloud-init configuration
+# Apply cloud-init configuration BEFORE first boot
 echo "==> Applying cloud-init configuration..."
 # Read the config.yaml and extract cloud-init.user-data
 CLOUD_INIT_DATA=$(yq -r '.config."cloud-init.user-data" // ""' "${APPLIANCE_DIR}/config.yaml")
@@ -100,9 +100,9 @@ if [[ -n "$NETWORK_CONFIG" ]]; then
   $SUDO incus config set "$BUILD_CONTAINER" cloud-init.network-config "$NETWORK_CONFIG"
 fi
 
-# Restart to apply cloud-init
-echo "==> Restarting container to apply cloud-init..."
-$SUDO incus restart "$BUILD_CONTAINER"
+# Start the container (cloud-init will run on first boot with our config)
+echo "==> Starting container..."
+$SUDO incus start "$BUILD_CONTAINER"
 
 # Wait for cloud-init to complete
 echo "==> Waiting for cloud-init to complete..."
