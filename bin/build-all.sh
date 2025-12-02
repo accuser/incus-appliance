@@ -18,7 +18,7 @@ for appliance_dir in "${PROJECT_ROOT}/appliances"/*; do
   [[ "$(basename "$appliance_dir")" == "_base" ]] && continue
 
   appliance=$(basename "$appliance_dir")
-  if [[ -f "${appliance_dir}/image.yaml" ]]; then
+  if [[ -f "${appliance_dir}/config.yaml" ]]; then
     appliances+=("$appliance")
   fi
 done
@@ -39,7 +39,7 @@ for appliance in "${appliances[@]}"; do
   echo "Building: ${appliance}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  if "${SCRIPT_DIR}/build-appliance.sh" "$appliance" "$ARCH"; then
+  if "${SCRIPT_DIR}/build-appliance-incus.sh" "$appliance" "$ARCH"; then
     succeeded+=("$appliance")
   else
     failed+=("$appliance")

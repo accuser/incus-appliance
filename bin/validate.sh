@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Validate all appliance templates
-# Checks for required files, YAML syntax, and JSON schema validation
+# Checks for required files, YAML syntax, and cloud-init configuration
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -12,16 +12,19 @@ SCHEMAS_DIR="${PROJECT_ROOT}/schemas"
 errors=0
 warnings=0
 
-# Check if schema validation tools are available
-SCHEMA_VALIDATION=false
-if command -v check-jsonschema >/dev/null 2>&1 && command -v yq >/dev/null 2>&1; then
-  SCHEMA_VALIDATION=true
-  echo "==> Schema validation enabled (check-jsonschema + yq found)"
-elif command -v yq >/dev/null 2>&1; then
-  echo "==> Schema validation disabled (install check-jsonschema for full validation)"
-  echo "    Install with: pip install check-jsonschema"
+# Check if validation tools are available
+YQ_AVAILABLE=false
+if command -v yq >/dev/null 2>&1; then
+  YQ_AVAILABLE=true
+  echo "==> yq found - cloud-init validation enabled"
 else
-  echo "==> Schema validation disabled (yq and check-jsonschema not found)"
+  echo "==> yq not found - install yq for full validation"
+fi
+
+YAMLLINT_AVAILABLE=false
+if command -v yamllint >/dev/null 2>&1; then
+  YAMLLINT_AVAILABLE=true
+  echo "==> yamllint found - YAML syntax validation enabled"
 fi
 echo ""
 
@@ -30,23 +33,12 @@ if [[ -f "${PROJECT_ROOT}/appliances.yaml" ]]; then
   echo "==> Validating appliances.yaml manifest..."
 
   # YAML syntax check
-  if command -v yamllint >/dev/null 2>&1; then
+  if [[ "$YAMLLINT_AVAILABLE" == "true" ]]; then
     if yamllint -d relaxed "${PROJECT_ROOT}/appliances.yaml" >/dev/null 2>&1; then
       echo "  ✓ Valid YAML syntax"
     else
       echo "  ✗ Invalid YAML syntax"
       yamllint -d relaxed "${PROJECT_ROOT}/appliances.yaml" 2>&1 | head -10
-      ((errors++))
-    fi
-  fi
-
-  # Schema validation
-  if [[ "$SCHEMA_VALIDATION" == "true" ]] && [[ -f "${SCHEMAS_DIR}/appliances.schema.json" ]]; then
-    if yq -o=json "${PROJECT_ROOT}/appliances.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliances.schema.json" - 2>/dev/null; then
-      echo "  ✓ Valid against schema"
-    else
-      echo "  ✗ Schema validation failed"
-      yq -o=json "${PROJECT_ROOT}/appliances.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliances.schema.json" - 2>&1 | head -20
       ((errors++))
     fi
   fi
@@ -64,35 +56,54 @@ for appliance_dir in "${APPLIANCES_DIR}"/*; do
   appliance_name=$(basename "$appliance_dir")
   echo "Checking: ${appliance_name}"
 
-  # Check for required files
-  if [[ ! -f "${appliance_dir}/image.yaml" ]]; then
-    echo "  ✗ Missing image.yaml"
+  # Check for required config.yaml
+  if [[ ! -f "${appliance_dir}/config.yaml" ]]; then
+    echo "  ✗ Missing config.yaml"
     ((errors++))
   else
-    echo "  ✓ image.yaml found"
+    echo "  ✓ config.yaml found"
 
     # Basic YAML validation
-    if command -v yamllint >/dev/null 2>&1; then
-      if yamllint -d relaxed "${appliance_dir}/image.yaml" >/dev/null 2>&1; then
+    if [[ "$YAMLLINT_AVAILABLE" == "true" ]]; then
+      if yamllint -d relaxed "${appliance_dir}/config.yaml" >/dev/null 2>&1; then
         echo "    ✓ Valid YAML syntax"
       else
         echo "    ✗ Invalid YAML syntax"
+        yamllint -d relaxed "${appliance_dir}/config.yaml" 2>&1 | head -5
         ((errors++))
       fi
     fi
 
-    # Check for required fields in image.yaml
-    if ! grep -q "^image:" "${appliance_dir}/image.yaml"; then
-      echo "    ✗ Missing 'image:' section"
-      ((errors++))
-    fi
-    if ! grep -q "^source:" "${appliance_dir}/image.yaml"; then
-      echo "    ✗ Missing 'source:' section"
-      ((errors++))
-    fi
-    if ! grep -q "^packages:" "${appliance_dir}/image.yaml"; then
-      echo "    ⚠ No packages defined"
-      ((warnings++))
+    # Check for required cloud-init.user-data
+    if [[ "$YQ_AVAILABLE" == "true" ]]; then
+      USER_DATA=$(yq -r '.config."cloud-init.user-data" // ""' "${appliance_dir}/config.yaml" 2>/dev/null || echo "")
+      if [[ -z "$USER_DATA" ]]; then
+        echo "    ✗ Missing cloud-init.user-data in config"
+        ((errors++))
+      else
+        echo "    ✓ cloud-init.user-data present"
+
+        # Check for #cloud-config header
+        if echo "$USER_DATA" | head -1 | grep -q "^#cloud-config"; then
+          echo "    ✓ Has #cloud-config header"
+        else
+          echo "    ✗ Missing #cloud-config header"
+          ((errors++))
+        fi
+
+        # Check for packages section
+        if echo "$USER_DATA" | grep -q "packages:"; then
+          echo "    ✓ Has packages section"
+        else
+          echo "    ⚠ No packages defined"
+          ((warnings++))
+        fi
+
+        # Check for runcmd section
+        if echo "$USER_DATA" | grep -q "runcmd:"; then
+          echo "    ✓ Has runcmd section"
+        fi
+      fi
     fi
   fi
 
@@ -104,35 +115,25 @@ for appliance_dir in "${APPLIANCES_DIR}"/*; do
     echo "  ✓ appliance.yaml found"
 
     # Validate appliance.yaml syntax
-    if command -v yamllint >/dev/null 2>&1; then
+    if [[ "$YAMLLINT_AVAILABLE" == "true" ]]; then
       if yamllint -d relaxed "${appliance_dir}/appliance.yaml" >/dev/null 2>&1; then
         echo "    ✓ Valid YAML syntax"
       else
         echo "    ✗ Invalid YAML syntax"
+        yamllint -d relaxed "${appliance_dir}/appliance.yaml" 2>&1 | head -5
         ((errors++))
       fi
     fi
 
-    # Schema validation for appliance.yaml
-    if [[ "$SCHEMA_VALIDATION" == "true" ]] && [[ -f "${SCHEMAS_DIR}/appliance.schema.json" ]]; then
-      if yq -o=json "${appliance_dir}/appliance.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliance.schema.json" - 2>/dev/null; then
-        echo "    ✓ Valid against schema"
+    # Basic field checking
+    for field in name version description; do
+      if grep -q "^${field}:" "${appliance_dir}/appliance.yaml"; then
+        echo "    ✓ Has ${field}"
       else
-        echo "    ✗ Schema validation failed"
-        yq -o=json "${appliance_dir}/appliance.yaml" | check-jsonschema --schemafile "${SCHEMAS_DIR}/appliance.schema.json" - 2>&1 | head -10
-        ((errors++))
+        echo "    ⚠ Missing ${field}"
+        ((warnings++))
       fi
-    else
-      # Fallback to basic field checking
-      for field in name version description; do
-        if grep -q "^${field}:" "${appliance_dir}/appliance.yaml"; then
-          echo "    ✓ Has ${field}"
-        else
-          echo "    ⚠ Missing ${field}"
-          ((warnings++))
-        fi
-      done
-    fi
+    done
   fi
 
   # Check for README (recommended)
@@ -143,14 +144,10 @@ for appliance_dir in "${APPLIANCES_DIR}"/*; do
     echo "  ✓ README.md found"
   fi
 
-  # Check if files directory is referenced but missing
-  if grep -q "generator: copy" "${appliance_dir}/image.yaml" 2>/dev/null; then
-    if [[ ! -d "${appliance_dir}/files" ]]; then
-      echo "  ✗ image.yaml references files/ but directory not found"
-      ((errors++))
-    else
-      echo "  ✓ files/ directory exists"
-    fi
+  # Check if files directory exists (optional)
+  if [[ -d "${appliance_dir}/files" ]]; then
+    file_count=$(find "${appliance_dir}/files" -type f | wc -l)
+    echo "  ✓ files/ directory exists (${file_count} files)"
   fi
 
   echo ""

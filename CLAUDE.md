@@ -12,48 +12,26 @@ The project generates a static SimpleStreams registry (JSON + image files) that 
 
 ### Building Appliances
 
-**IMPORTANT**: `distrobuilder` requires kernel-level access and **cannot run in containers** (including Docker and Incus system containers). Builds must run either:
-1. **On bare metal** with `sudo` (if you have direct host access)
-2. **In a VM** (recommended for development environments like devcontainers)
-
-#### Option 1: Building with a VM (Recommended for Containers/Devcontainers)
-
-If you're running in a container or devcontainer, use the build VM approach:
-
-```bash
-# One-time setup: Create and configure build VM
-./scripts/setup-build-vm.sh
-
-# Build a single appliance using the VM
-./scripts/build-remote.sh <appliance-name> [architecture]
-./scripts/build-remote.sh nginx
-./scripts/build-remote.sh nginx arm64
-
-# Build all appliances using the VM
-./scripts/build-all-remote.sh [architecture]
-```
-
-The VM automatically mounts your project directory, so built images appear in your local `registry/` directory.
-
-See [docs/vm-build-setup.md](docs/vm-build-setup.md) for detailed VM setup and usage.
-
-#### Option 2: Building on Bare Metal
-
-If running directly on a host with Incus installed:
+Appliances are built using Incus directly with cloud-init for configuration. Builds require:
+1. **Incus installed and running** on the build host
+2. **incus-simplestreams** for managing the SimpleStreams registry
 
 ```bash
 # Build a single appliance
-sudo ./bin/build-appliance.sh <appliance-name> [architecture]
-# Or via Makefile
-make build-nginx                    # Build nginx for current arch
-make build-nginx ARCH=arm64        # Build for specific arch
+./bin/build-appliance-incus.sh <appliance-name> [architecture]
+./bin/build-appliance-incus.sh nginx
+./bin/build-appliance-incus.sh nginx arm64
 
 # Build all appliances
-sudo ./bin/build-all.sh
-# Or via Makefile
-make build                         # Build all for current arch
-make build-all-arch               # Build all for amd64 and arm64
+./bin/build-all.sh
 ```
+
+The build process:
+1. Launches a container from `images:debian/12/cloud`
+2. Applies cloud-init configuration from `config.yaml`
+3. Copies files from `files/` directory
+4. Stops, publishes, and exports the image
+5. Adds to the SimpleStreams registry
 
 ### Validation and Testing
 
@@ -144,16 +122,16 @@ make clean-all      # Remove .build/ and registry/
 ### Key Concepts
 
 1. **Appliance** = Pre-configured single-purpose container image
-2. **distrobuilder** = Tool that builds images from YAML templates
+2. **cloud-init** = Cloud instance initialization tool used to configure appliances
 3. **SimpleStreams** = Protocol for serving image metadata (index.json → images.json → image files)
 4. **incus-simplestreams** = CLI tool for managing SimpleStreams registries
 
 ### Build Pipeline
 
 ```
-appliance.yaml + image.yaml + files/
+appliance.yaml + config.yaml + files/
     ↓
-distrobuilder (creates incus.tar.xz + rootfs.squashfs)
+Incus (launches container, applies cloud-init, exports image)
     ↓
 incus-simplestreams add (adds to registry/, updates JSON metadata)
     ↓
@@ -165,16 +143,14 @@ Incus client fetches and launches
 ### Directory Structure
 
 - **`appliances/`** — Appliance definitions (each in its own directory)
-  - **`_base/`** — Reference templates for copy-paste (debian.yaml) — not includable, just canonical examples
   - **`<name>/`** — Each appliance directory contains:
-    - `appliance.yaml` — Metadata (optional but recommended)
-    - `image.yaml` — Distrobuilder build template (required)
-    - `files/` — Files to embed in the image
+    - `appliance.yaml` — Metadata (version, ports, healthcheck, etc.)
+    - `config.yaml` — Incus/cloud-init configuration (required)
+    - `files/` — Additional files to copy into the image
     - `README.md` — User documentation
-    - `profiles/` — Optional Incus profiles
 
-- **`bin/`** — Core build and test scripts (run inside VM or on bare metal)
-  - `build-appliance.sh` — Build single appliance
+- **`bin/`** — Core build and test scripts
+  - `build-appliance-incus.sh` — Build single appliance using Incus
   - `build-all.sh` — Build all appliances
   - `validate.sh` — Template validation
   - `test-appliance.sh` — Integration testing
@@ -193,47 +169,53 @@ Incus client fetches and launches
 - **`.build/`** — Build artifacts (gitignored)
   - `.build/<appliance>/<arch>/` — Per-appliance build directory
 
-- **`.cache/distrobuilder/`** — Base image cache (gitignored)
 
 ### Appliance Template Structure
 
 Every appliance has two YAML files:
 
-**appliance.yaml** (metadata, optional but recommended):
+**appliance.yaml** (metadata):
 ```yaml
 name: myapp
 version: "1.0.0"
 description: "Brief description"
-base:
-  distribution: debian
-  release: bookworm
 cloud_init: true
-ports: [...]
-volumes: [...]
+ports:
+  - port: 80
+    protocol: tcp
+    description: HTTP
+volumes:
+  - path: /var/lib/myapp
+    description: "Application data"
 healthcheck:
   command: "curl -sf http://localhost/health || exit 1"
 ```
 
-**image.yaml** (distrobuilder template, required):
+**config.yaml** (cloud-init configuration, required):
 ```yaml
-image:           # Image metadata (distribution, release, architecture)
-source:          # Where to download base image
-packages:        # Packages to install/remove
-files:           # Files to inject (copy, dump, or template)
-actions:         # Scripts to run at build stages (post-unpack, post-packages, post-files)
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    packages:
+      - nginx
+    write_files:
+      - path: /etc/myapp/config.yaml
+        permissions: '0644'
+        content: |
+          # configuration here
+    runcmd:
+      - systemctl enable myapp
+      - systemctl start myapp
 ```
 
-### File Generators in image.yaml
+### cloud-init Modules
 
-- **copy**: Copy from `files/` directory
-- **dump**: Inline content
-- **template**: Go templates with variables
-
-### Action Triggers
-
-- **post-unpack**: After base system unpacked, before packages
-- **post-packages**: After package installation
-- **post-files**: After file generation
+The `config.yaml` uses cloud-init's cloud-config format:
+- **packages**: List of packages to install
+- **write_files**: Files to create with content and permissions
+- **users**: Create system users
+- **runcmd**: Commands to run after boot
 
 ## Creating New Appliances
 
@@ -241,42 +223,41 @@ actions:         # Scripts to run at build stages (post-unpack, post-packages, p
 
 ```bash
 # 1. Create directory structure
-mkdir -p appliances/myapp/{files,profiles}
+mkdir -p appliances/myapp/files
 
 # 2. Create appliance.yaml (see appliances/nginx/appliance.yaml as reference)
 
-# 3. Create image.yaml (see appliances/nginx/image.yaml as reference)
+# 3. Create config.yaml with cloud-init configuration
 
-# 4. Add any files to files/ directory
+# 4. Add any files to files/ directory (optional)
 
 # 5. Create README.md documenting usage
 
 # 6. Build and test
-sudo ./bin/build-appliance.sh myapp
+./bin/build-appliance-incus.sh myapp
 ./bin/test-appliance.sh myapp appliance-test
 ```
 
 ### Best Practices
 
-- **Use Debian as base** — Provides reliable cloud-init support and broad compatibility
-- **Enable cloud-init** — Include cloud-init for last-mile configuration
-- **No default passwords** — Use cloud-init for credentials
-- **Run services as non-root** — Create dedicated users in post-packages action
-- **Enable cleanup** — Set `packages.cleanup: true` to remove package cache
+- **Use cloud-init write_files** — Embed configuration files directly in config.yaml when possible
+- **No default passwords** — Use cloud-init for credentials at launch time
+- **Run services as non-root** — Create dedicated users in cloud-init users section
 - **Include health checks** — Define working health check in appliance.yaml
 - **Document persistence** — Clearly specify which directories should be persisted in volumes
+- **Keep packages minimal** — Only install what's necessary
 
-### Distribution Notes
+### Base Image
 
-**Debian** (recommended):
-- Init: systemd (`systemctl enable service`)
-- Package manager: apt
-- C library: glibc (broad compatibility)
-- cloud-init: Native support, works reliably with Incus
+All appliances are built from `images:debian/12/cloud` which includes:
+- Debian 12 (Bookworm)
+- cloud-init pre-installed
+- systemd for service management
+- Minimal footprint
 
 ## Testing Workflow
 
-1. **Build** — `sudo ./bin/build-appliance.sh <name>`
+1. **Build** — `./bin/build-appliance-incus.sh <name>`
 2. **Start server** — `./scripts/serve-local.sh &`
 3. **Add remote** — `incus remote add test https://localhost:8443 --protocol simplestreams --accept-certificate`
 4. **Launch** — `incus launch test:<name> test-instance`
@@ -294,12 +275,11 @@ The build script normalizes architecture names:
 
 ### Build Requirements
 
-- **Container limitation**: `distrobuilder` cannot run in containers (Docker or Incus system containers)
-  - Requires kernel features unavailable to containers (loop devices, chroot, mount namespaces)
-  - **Solution**: Use a VM for building (see [docs/vm-build-setup.md](docs/vm-build-setup.md))
-- Builds **must** run with `sudo` (distrobuilder needs root access for chroot operations)
-- First build downloads base images (cached in `.cache/distrobuilder/`)
-- Subsequent builds are much faster due to caching
+- **Incus must be installed** and running on the build host
+- **incus-simplestreams** must be installed for registry management
+- The user must have permissions to use Incus (member of `incus` group or root)
+- First build downloads the base image from linuxcontainers.org (cached by Incus)
+- Subsequent builds are faster due to image caching
 
 ### Registry Management
 
@@ -324,16 +304,17 @@ The build script normalizes architecture names:
 
 ### Build Failures
 
-- **"Permission denied"** — Build scripts must run with `sudo`
-- **"distrobuilder not found"** — Install with `sudo snap install distrobuilder --classic`
-- **Package not found** — Check distribution's package repository
-- **Service won't start** — Verify service name matches init system (systemd: `<name>.service`)
+- **"Incus not found"** — Ensure Incus is installed and running
+- **"Permission denied"** — User must be in the `incus` group
+- **cloud-init timeout** — Check cloud-init logs in the container
+- **Package not found** — Verify package name in Debian repositories
+- **Service won't start** — Check systemd unit file syntax
 
 ### Template Issues
 
-- **Files not found** — `source:` path in `files:` section is relative to `appliances/<name>/`
-- **Validation fails** — Ensure `image.yaml` exists and has `image:` and `source:` sections
-- **YAML syntax errors** — Run `make lint` if yamllint is installed
+- **Validation fails** — Ensure `config.yaml` exists and has `cloud-init.user-data`
+- **Missing #cloud-config header** — First line of user-data must be `#cloud-config`
+- **YAML syntax errors** — Run `./bin/validate.sh` or `make lint`
 
 ### Testing Issues
 

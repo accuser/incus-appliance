@@ -14,13 +14,13 @@ all: help
 
 build: ## Build all appliances
 	@for app in $(APPLIANCES); do \
-		if [ -f "appliances/$$app/image.yaml" ]; then \
+		if [ -f "appliances/$$app/config.yaml" ]; then \
 			$(MAKE) build-$$app; \
 		fi; \
 	done
 
 build-%: ## Build specific appliance (e.g., make build-nginx)
-	@./bin/build-appliance.sh $* $(ARCH)
+	@./bin/build-appliance-incus.sh $* $(ARCH)
 
 build-all-arch: ## Build all appliances for all architectures
 	@for app in $(APPLIANCES); do \

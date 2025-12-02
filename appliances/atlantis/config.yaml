@@ -1,0 +1,142 @@
+# config.yaml - Incus cloud-init configuration for Atlantis appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - wget
+      - tzdata
+      - logrotate
+      - gnupg
+      - unzip
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Git (required for Atlantis)
+      - git
+
+    users:
+      - name: atlantis
+        system: true
+        home: /var/lib/atlantis
+        shell: /usr/sbin/nologin
+
+    write_files:
+      - path: /etc/atlantis/atlantis.yaml
+        permissions: '0644'
+        content: |
+          # Atlantis Server-Side Repo Config
+          # See: https://www.runatlantis.io/docs/server-side-repo-config
+          repos:
+            - id: /.*/
+              allowed_overrides: [workflow, apply_requirements, delete_source_branch_on_merge]
+              allow_custom_workflows: true
+
+      - path: /etc/atlantis/env
+        permissions: '0600'
+        content: |
+          # Atlantis environment configuration
+          # Configure these values for your environment
+
+          # Required: GitHub/GitLab/Bitbucket configuration
+          # ATLANTIS_GH_USER=your-github-user
+          # ATLANTIS_GH_TOKEN=your-github-token
+          # ATLANTIS_GH_WEBHOOK_SECRET=your-webhook-secret
+
+          # Required: Repository allowlist (use * for all repos from a user/org)
+          # ATLANTIS_REPO_ALLOWLIST=github.com/your-org/*
+
+          # Server configuration
+          ATLANTIS_PORT=4141
+          ATLANTIS_DATA_DIR=/var/lib/atlantis
+          ATLANTIS_REPO_CONFIG=/etc/atlantis/atlantis.yaml
+
+          # Optional: Atlantis URL (for links in PR comments)
+          # ATLANTIS_ATLANTIS_URL=https://atlantis.example.com
+
+      - path: /etc/systemd/system/atlantis.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Atlantis Terraform Pull Request Automation
+          Documentation=https://www.runatlantis.io/docs
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=atlantis
+          Group=atlantis
+          EnvironmentFile=/etc/atlantis/env
+          ExecStart=/usr/local/bin/atlantis server
+          Restart=on-failure
+          RestartSec=5
+
+          # Security hardening
+          NoNewPrivileges=yes
+          ProtectSystem=strict
+          ProtectHome=yes
+          ReadWritePaths=/var/lib/atlantis
+          PrivateTmp=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Atlantis Appliance
+            Incus Appliance Registry
+          =====================================================
+            Config: /etc/atlantis/
+            Data:   /var/lib/atlantis/
+            Logs:   journalctl -u atlantis
+            Status: systemctl status atlantis
+          =====================================================
+
+          Configure Atlantis by editing /etc/atlantis/env with your
+          GitHub/GitLab/Bitbucket credentials and webhook secret.
+
+          Supports cloud-init for automated configuration.
+          See: incus config set <instance> cloud-init.user-data ...
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    runcmd:
+      # Ensure directories exist
+      - mkdir -p /var/lib/atlantis /etc/atlantis
+      # Download and install Atlantis
+      - |
+        ATLANTIS_VERSION="0.37.1"
+        ARCH=$(dpkg --print-architecture)
+        cd /tmp
+        wget -q "https://github.com/runatlantis/atlantis/releases/download/v${ATLANTIS_VERSION}/atlantis_linux_${ARCH}.zip"
+        unzip -q "atlantis_linux_${ARCH}.zip"
+        mv atlantis /usr/local/bin/
+        chmod +x /usr/local/bin/atlantis
+        rm -f "atlantis_linux_${ARCH}.zip"
+        /usr/local/bin/atlantis version
+      # Set ownership
+      - chown -R atlantis:atlantis /var/lib/atlantis
+      - chown -R atlantis:atlantis /etc/atlantis
+      # Enable atlantis service
+      - systemctl daemon-reload
+      - systemctl enable atlantis
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

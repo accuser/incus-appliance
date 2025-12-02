@@ -10,6 +10,12 @@ on:
       - 'bin/**'
       - '.github/workflows/build-and-publish.yml'
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild all appliances'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: write
@@ -38,9 +44,13 @@ jobs:
       - name: Detect changed appliances
         id: changes
         run: |
-          # For workflow_dispatch, build all appliances
+          # For workflow_dispatch with force_rebuild, build all appliances
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Workflow dispatch - building all appliances"
+            if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+              echo "Force rebuild requested - building all appliances"
+            else
+              echo "Workflow dispatch - building all appliances"
+            fi
             CHANGED_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml | tr '\n' ' ')
           else
             # Get list of changed files
@@ -133,25 +143,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU for cross-architecture builds
-        if: matrix.arch != 'amd64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support
-          sudo update-binfmts --enable
-
       - name: Setup Incus tools
         uses: ./.github/actions/setup-incus-tools
         with:
-          extra-packages: jq
+          extra-packages: yq
 
-      - name: Build appliance
+      - name: Build appliance with Incus
         run: |
-          sudo ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
-
-          # Fix ownership so we can work with the files
-          sudo chown -R $USER:$USER .build
-          sudo chown -R $USER:$USER registry
+          # Build using the new Incus-based build script
+          ./bin/build-appliance-incus.sh ${{ matrix.appliance }} ${{ matrix.arch }}
 
       - name: Prepare image files for release
         id: metadata

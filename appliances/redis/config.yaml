@@ -1,0 +1,107 @@
+# config.yaml - Incus cloud-init configuration for Redis appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Redis
+      - redis-server
+      - redis-tools
+
+    write_files:
+      - path: /etc/redis/redis-appliance.conf
+        permissions: '0640'
+        content: |
+          # Redis appliance configuration overrides
+          # This file is included by the main redis.conf
+
+          # Bind to all interfaces (secure with firewall or requirepass)
+          bind 0.0.0.0
+
+          # Disable protected mode to allow remote connections
+          # IMPORTANT: Set a password using requirepass or use firewall rules
+          protected-mode no
+
+          # Enable AOF persistence for durability
+          appendonly yes
+          appendfsync everysec
+
+          # Log to file
+          logfile /var/log/redis/redis-server.log
+          loglevel notice
+
+          # Set max memory policy (comment out for unlimited)
+          # maxmemory 256mb
+          # maxmemory-policy allkeys-lru
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Redis Appliance
+            Incus Appliance Registry
+          =====================================================
+            Data:   /var/lib/redis/
+            Config: /etc/redis/
+            Logs:   /var/log/redis/
+            Status: redis-cli ping
+          =====================================================
+
+          Default: Redis is accessible from all interfaces without authentication.
+          Set a password: redis-cli CONFIG SET requirepass "your-password"
+
+          Supports cloud-init for automated configuration.
+          See: incus config set <instance> cloud-init.user-data ...
+
+      - path: /etc/logrotate.d/redis-server
+        permissions: '0644'
+        content: |
+          /var/log/redis/*.log {
+              daily
+              missingok
+              rotate 14
+              compress
+              delaycompress
+              notifempty
+              create 0640 redis redis
+              sharedscripts
+              postrotate
+                  redis-cli ping > /dev/null 2>&1 || true
+              endscript
+          }
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    runcmd:
+      # Ensure Redis directories exist
+      - mkdir -p /var/lib/redis /var/log/redis
+      # Include appliance config in main redis.conf
+      - echo "include /etc/redis/redis-appliance.conf" >> /etc/redis/redis.conf
+      # Enable Redis at boot
+      - systemctl enable redis-server
+      # Set permissions
+      - chown -R redis:redis /var/lib/redis
+      - chown -R redis:redis /var/log/redis
+      - chown redis:redis /etc/redis/redis-appliance.conf
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

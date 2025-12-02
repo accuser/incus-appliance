@@ -1,5 +1,5 @@
 name: 'Setup Incus Tools'
-description: 'Install incus-extra and related tools from the Zabbly repository'
+description: 'Install incus-simplestreams for registry management'
 
 inputs:
   extra-packages:
@@ -10,12 +10,24 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Zabbly repository
+    - name: Check for Incus
       shell: bash
       run: |
-        sudo mkdir -p /etc/apt/keyrings
-        sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
-        sudo sh -c 'cat > /etc/apt/sources.list.d/zabbly-incus-stable.sources <<EOF
+        if ! command -v incus &> /dev/null; then
+          echo "Error: Incus not found. This action requires Incus to be pre-installed."
+          echo "Self-hosted runners should have Incus installed."
+          exit 1
+        fi
+        incus --version
+
+    - name: Setup Zabbly repository for incus-simplestreams
+      shell: bash
+      run: |
+        if ! command -v incus-simplestreams &> /dev/null; then
+          echo "Installing incus-simplestreams from Zabbly repository..."
+          sudo mkdir -p /etc/apt/keyrings
+          sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+          sudo sh -c 'cat > /etc/apt/sources.list.d/zabbly-incus-stable.sources <<EOF
         Enabled: yes
         Types: deb
         URIs: https://pkgs.zabbly.com/incus/stable
@@ -24,15 +36,17 @@ runs:
         Architectures: $(dpkg --print-architecture)
         Signed-By: /etc/apt/keyrings/zabbly.asc
         EOF'
-
-    - name: Install packages
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y make incus-extra ${{ inputs.extra-packages }}
+          sudo apt-get update
+          sudo apt-get install -y incus-extra ${{ inputs.extra-packages }}
+        else
+          echo "incus-simplestreams already installed"
+          if [ -n "${{ inputs.extra-packages }}" ]; then
+            sudo apt-get update
+            sudo apt-get install -y ${{ inputs.extra-packages }}
+          fi
+        fi
 
     - name: Verify installation
       shell: bash
       run: |
-        distrobuilder --version
         incus-simplestreams --version
