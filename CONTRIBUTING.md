@@ -296,6 +296,21 @@ Before submitting, verify:
 - [ ] Documentation is clear and accurate
 - [ ] No security issues (shellcheck, yamllint)
 
+### Security Scanning
+
+All appliance images are scanned for vulnerabilities using [Trivy](https://trivy.dev/) during CI:
+
+- **Critical vulnerabilities** — Will fail the build and must be fixed
+- **High/Medium vulnerabilities** — Reported in GitHub Security tab
+- **False positives** — Can be added to `.trivyignore` with justification
+
+If your build fails due to security issues:
+
+1. Check the Trivy output in the CI logs
+2. Update packages to patched versions if available
+3. If it's a false positive, add to `.trivyignore` with a comment explaining why
+4. Document any accepted risks in the PR description
+
 ## Pull Request Process
 
 This project uses **GitHub Flow** with squash merging. All changes must go through pull requests.

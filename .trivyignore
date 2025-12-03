@@ -1,0 +1,13 @@
+# Trivy Ignore File
+# Add CVE IDs here to suppress false positives or accepted risks
+# Format: CVE-YYYY-NNNNN
+#
+# Before adding a CVE here, document:
+# 1. Why this is a false positive OR
+# 2. Why the risk is acceptable
+# 3. When to revisit (if applicable)
+#
+# Example:
+# CVE-2023-12345  # Not applicable: feature not used in our configuration
+
+# Currently no CVEs are ignored

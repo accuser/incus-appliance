@@ -381,6 +381,30 @@ Generated and managed by `incus-simplestreams`:
    - Minimal attack surface
    - Services run as non-root users
 
+### Vulnerability Scanning
+
+All appliance images are automatically scanned for security vulnerabilities before publishing:
+
+1. **Trivy Scanner**
+   - Scans rootfs for known CVEs
+   - Checks OS packages (Debian/apt)
+   - Detects vulnerabilities in system libraries
+
+2. **Build Pipeline Integration**
+   - Scanning runs after each build
+   - Results uploaded to GitHub Security tab
+   - Critical vulnerabilities fail the build
+
+3. **Severity Levels**
+   - **CRITICAL** — Build fails, must be fixed
+   - **HIGH/MEDIUM** — Reported, visible in Security tab
+   - **LOW** — Tracked but not blocking
+
+4. **Managing False Positives**
+   - Use `.trivyignore` file to suppress known false positives
+   - Document reason for each suppression
+   - Review periodically for updates
+
 ### Registry Security
 
 1. **Transport**
