@@ -21,6 +21,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  security-events: write
 
 jobs:
   generate-matrix:
@@ -150,6 +151,54 @@ jobs:
         run: |
           # Build using the new Incus-based build script
           ./bin/build-appliance-incus.sh ${{ matrix.appliance }} ${{ matrix.arch }}
+
+      - name: Extract rootfs for security scanning
+        id: extract
+        run: |
+          BUILD_DIR=".build/${{ matrix.appliance }}/${{ matrix.arch }}"
+          SCAN_DIR="${BUILD_DIR}/rootfs-scan"
+          mkdir -p "${SCAN_DIR}"
+
+          # Extract squashfs for scanning
+          sudo unsquashfs -d "${SCAN_DIR}/rootfs" "${BUILD_DIR}/rootfs.squashfs"
+          sudo chown -R $(id -u):$(id -g) "${SCAN_DIR}"
+
+          echo "scan_dir=${SCAN_DIR}/rootfs" >> $GITHUB_OUTPUT
+
+      - name: Scan rootfs for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'rootfs'
+          scan-ref: ${{ steps.extract.outputs.scan_dir }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+
+      - name: Fail on critical vulnerabilities
+        run: |
+          # Install Trivy using the official install script (works on any Linux)
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+
+          # Check for critical vulnerabilities - fail the build if found
+          trivy rootfs --exit-code 1 --severity CRITICAL --ignore-unfixed --ignorefile .trivyignore ${{ steps.extract.outputs.scan_dir }} || {
+            echo "::error::Critical vulnerabilities found in ${{ matrix.appliance }} (${{ matrix.arch }})"
+            exit 1
+          }
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: '${{ matrix.appliance }}-${{ matrix.arch }}'
+
+      - name: Cleanup scan directory
+        if: always()
+        run: |
+          BUILD_DIR=".build/${{ matrix.appliance }}/${{ matrix.arch }}"
+          sudo rm -rf "${BUILD_DIR}/rootfs-scan"
 
       - name: Prepare image files for release
         id: metadata
