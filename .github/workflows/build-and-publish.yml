@@ -159,8 +159,8 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 60
           command: |
-            # Build using the new Incus-based build script
-            ./bin/build-appliance-incus.sh ${{ matrix.appliance }} ${{ matrix.arch }}
+            # Build using the Incus-based build script
+            ./bin/build-appliance.sh ${{ matrix.appliance }} ${{ matrix.arch }}
 
       - name: Extract rootfs for security scanning
         id: extract
