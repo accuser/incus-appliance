@@ -48,3 +48,7 @@ appliances:
   - name: prometheus
     description: Prometheus monitoring system and time series database
     # Version: defined in appliances/prometheus/appliance.yaml
+
+  - name: loki
+    description: Grafana Loki log aggregation system
+    # Version: defined in appliances/loki/appliance.yaml
