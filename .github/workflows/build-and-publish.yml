@@ -7,8 +7,9 @@ on:
     paths:
       - 'appliances/**'
       - 'appliances.yaml'
-      - 'bin/**'
+      - 'bin/build-appliance.sh'
       - '.github/workflows/build-and-publish.yml'
+      - '.base-image-fingerprint'
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -54,31 +55,86 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.force_rebuild }}" = "true" ]; then
               echo "Force rebuild requested - building all appliances"
+              CHANGED_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml | tr '\n' ' ')
             else
-              echo "Workflow dispatch - building all appliances"
+              echo "Workflow dispatch without force - no builds"
+              CHANGED_APPLIANCES=""
             fi
-            CHANGED_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml | tr '\n' ' ')
           else
             # Get list of changed files
             CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
             echo "Changed files:"
             echo "$CHANGED_FILES"
 
-            # Check if core files changed (rebuild all)
-            if echo "$CHANGED_FILES" | grep -qE '^(bin/|appliances\.yaml|\.github/workflows/build-and-publish\.yml)'; then
-              echo "Core files changed - building all appliances"
+            CHANGED_APPLIANCES=""
+            REBUILD_ALL=false
+
+            # Check for changes that require rebuilding ALL appliances
+            # - build-appliance.sh affects how images are built
+            # - build-and-publish.yml workflow changes
+            # - .base-image-fingerprint means base image was updated
+            if echo "$CHANGED_FILES" | grep -qE '^(bin/build-appliance\.sh|\.github/workflows/build-and-publish\.yml|\.base-image-fingerprint)$'; then
+              echo "Core build files changed - rebuilding all appliances"
+              REBUILD_ALL=true
+            fi
+
+            # Check for appliances.yaml changes
+            if echo "$CHANGED_FILES" | grep -q '^appliances\.yaml$'; then
+              echo "appliances.yaml changed - analyzing changes..."
+
+              # Get the previous version of appliances.yaml
+              git show HEAD~1:appliances.yaml > /tmp/appliances.yaml.old 2>/dev/null || echo "" > /tmp/appliances.yaml.old
+
+              # Get list of appliances in old and new versions
+              OLD_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' /tmp/appliances.yaml.old 2>/dev/null | sort || echo "")
+              NEW_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml | sort)
+
+              # Find newly added appliances
+              ADDED_APPLIANCES=$(comm -13 <(echo "$OLD_APPLIANCES") <(echo "$NEW_APPLIANCES") | tr '\n' ' ')
+              if [ -n "$ADDED_APPLIANCES" ]; then
+                echo "New appliances added: $ADDED_APPLIANCES"
+                CHANGED_APPLIANCES="${CHANGED_APPLIANCES}${ADDED_APPLIANCES}"
+              fi
+
+              # Check if defaults section changed (affects all appliances)
+              OLD_DEFAULTS=$(yq -o=json '.defaults' /tmp/appliances.yaml.old 2>/dev/null || echo "{}")
+              NEW_DEFAULTS=$(yq -o=json '.defaults' appliances.yaml)
+              if [ "$OLD_DEFAULTS" != "$NEW_DEFAULTS" ]; then
+                echo "Defaults changed - rebuilding all appliances"
+                REBUILD_ALL=true
+              fi
+
+              # Check if any existing appliance's config changed (e.g., architectures)
+              for appliance in $NEW_APPLIANCES; do
+                OLD_CONFIG=$(yq -o=json ".appliances[] | select(.name == \"$appliance\")" /tmp/appliances.yaml.old 2>/dev/null || echo "{}")
+                NEW_CONFIG=$(yq -o=json ".appliances[] | select(.name == \"$appliance\")" appliances.yaml)
+                if [ "$OLD_CONFIG" != "$NEW_CONFIG" ] && [ -n "$OLD_CONFIG" ] && [ "$OLD_CONFIG" != "{}" ]; then
+                  echo "Config changed for $appliance"
+                  CHANGED_APPLIANCES="${CHANGED_APPLIANCES}${appliance} "
+                fi
+              done
+
+              rm -f /tmp/appliances.yaml.old
+            fi
+
+            # If rebuild all flag is set, get all appliances
+            if [ "$REBUILD_ALL" = "true" ]; then
               CHANGED_APPLIANCES=$(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml | tr '\n' ' ')
             else
-              # Detect which appliances changed
-              CHANGED_APPLIANCES=""
+              # Detect which individual appliance directories changed
               for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
                 if echo "$CHANGED_FILES" | grep -q "^appliances/${appliance}/"; then
-                  CHANGED_APPLIANCES="${CHANGED_APPLIANCES}${appliance} "
+                  # Don't add duplicates
+                  if ! echo "$CHANGED_APPLIANCES" | grep -qw "$appliance"; then
+                    CHANGED_APPLIANCES="${CHANGED_APPLIANCES}${appliance} "
+                  fi
                 fi
               done
             fi
           fi
 
+          # Trim whitespace
+          CHANGED_APPLIANCES=$(echo "$CHANGED_APPLIANCES" | xargs)
           echo "Changed appliances: $CHANGED_APPLIANCES"
           echo "changed_appliances=$CHANGED_APPLIANCES" >> $GITHUB_OUTPUT
 
