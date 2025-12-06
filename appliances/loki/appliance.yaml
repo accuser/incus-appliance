@@ -1,0 +1,63 @@
+# appliance.yaml - Appliance metadata
+name: loki
+version: "3.6.2"
+description: "Grafana Loki log aggregation system"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 256MB
+  min_disk: 1GB
+  recommended_memory: 1GB
+  recommended_disk: 10GB
+
+# Exposed ports (informational)
+ports:
+  - port: 3100
+    protocol: tcp
+    description: HTTP API (push/query)
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/loki
+    description: "Log data storage"
+
+# Health check command
+healthcheck:
+  command: "curl -sf http://localhost:3100/ready >/dev/null || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - logging
+  - logs
+  - aggregation
+  - observability
+  - grafana
+  - loki
+
+# Related appliances
+see_also:
+  - promtail
+  - grafana
+  - prometheus

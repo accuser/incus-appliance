@@ -1,0 +1,215 @@
+# config.yaml - Incus cloud-init configuration for Loki appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Utilities
+      - unzip
+
+    # Create loki user before writing files
+    users:
+      - name: loki
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/loki
+        no_create_home: true
+
+    write_files:
+      - path: /etc/loki/loki-config.yaml
+        permissions: '0644'
+        content: |
+          # Loki configuration
+          # See: https://grafana.com/docs/loki/latest/configure/
+
+          auth_enabled: false
+
+          server:
+            http_listen_port: 3100
+            grpc_listen_port: 9096
+            log_level: info
+
+          common:
+            instance_addr: 127.0.0.1
+            path_prefix: /var/lib/loki
+            storage:
+              filesystem:
+                chunks_directory: /var/lib/loki/chunks
+                rules_directory: /var/lib/loki/rules
+            replication_factor: 1
+            ring:
+              kvstore:
+                store: inmemory
+
+          query_range:
+            results_cache:
+              cache:
+                embedded_cache:
+                  enabled: true
+                  max_size_mb: 100
+
+          schema_config:
+            configs:
+              - from: 2020-10-24
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+
+          ruler:
+            alertmanager_url: http://localhost:9093
+
+          # Retention settings
+          limits_config:
+            retention_period: 744h  # 31 days
+
+          compactor:
+            working_directory: /var/lib/loki/compactor
+            compaction_interval: 10m
+            retention_enabled: true
+            retention_delete_delay: 2h
+            retention_delete_worker_count: 150
+            delete_request_store: filesystem
+
+          analytics:
+            reporting_enabled: false
+
+      - path: /etc/systemd/system/loki.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Grafana Loki
+          Documentation=https://grafana.com/docs/loki/latest/
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=loki
+          Group=loki
+          ExecStart=/usr/local/bin/loki -config.file=/etc/loki/loki-config.yaml
+          ExecReload=/bin/kill -HUP $MAINPID
+          Restart=on-failure
+          RestartSec=5
+          LimitNOFILE=65536
+
+          # Security hardening
+          NoNewPrivileges=yes
+          ProtectSystem=strict
+          ProtectHome=yes
+          ReadWritePaths=/var/lib/loki /var/log/loki
+
+          [Install]
+          WantedBy=multi-user.target
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Grafana Loki Appliance
+            Incus Appliance Registry
+          =====================================================
+            API:     http://<ip>:3100
+            Config:  /etc/loki/loki-config.yaml
+            Data:    /var/lib/loki/
+            Status:  systemctl status loki
+          =====================================================
+
+          Quick test:
+            curl -s localhost:3100/ready
+            curl -s localhost:3100/metrics
+
+          Push logs (example):
+            curl -X POST http://localhost:3100/loki/api/v1/push \
+              -H "Content-Type: application/json" \
+              -d '{"streams":[{"stream":{"app":"test"},"values":[["'$(date +%s)000000000'","hello world"]]}]}'
+
+          Query logs:
+            curl -sG localhost:3100/loki/api/v1/query \
+              --data-urlencode 'query={app="test"}'
+
+          Supports cloud-init for automated configuration.
+
+      - path: /etc/logrotate.d/loki
+        permissions: '0644'
+        content: |
+          /var/log/loki/*.log {
+              daily
+              missingok
+              rotate 14
+              compress
+              delaycompress
+              notifempty
+              create 0640 loki loki
+          }
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+      - path: /usr/local/bin/install-loki.sh
+        permissions: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+
+          VERSION="3.6.2"
+          ARCH=$(dpkg --print-architecture)
+
+          # Map architecture names
+          case "${ARCH}" in
+              amd64) LOKI_ARCH="amd64" ;;
+              arm64) LOKI_ARCH="arm64" ;;
+              *) echo "Unsupported architecture: ${ARCH}"; exit 1 ;;
+          esac
+
+          echo "Installing Loki ${VERSION} for ${LOKI_ARCH}..."
+
+          # Download and install Loki
+          cd /tmp
+          curl -fsSL -o loki.zip "https://github.com/grafana/loki/releases/download/v${VERSION}/loki-linux-${LOKI_ARCH}.zip"
+          unzip -o loki.zip
+          mv "loki-linux-${LOKI_ARCH}" /usr/local/bin/loki
+          chmod +x /usr/local/bin/loki
+          rm -f loki.zip
+
+          echo "Loki ${VERSION} installed successfully"
+
+    runcmd:
+      # Create directories
+      - mkdir -p /etc/loki
+      - mkdir -p /var/lib/loki/chunks
+      - mkdir -p /var/lib/loki/rules
+      - mkdir -p /var/lib/loki/compactor
+      - mkdir -p /var/log/loki
+      # Install Loki binary
+      - /usr/local/bin/install-loki.sh
+      # Set ownership
+      - chown -R loki:loki /var/lib/loki
+      - chown -R loki:loki /var/log/loki
+      - chown -R loki:loki /etc/loki
+      # Enable and start service
+      - systemctl daemon-reload
+      - systemctl enable loki
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true
