@@ -1,0 +1,84 @@
+# config.yaml - Incus cloud-init configuration for node-exporter appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Node exporter
+      - prometheus-node-exporter
+
+    write_files:
+      - path: /etc/default/prometheus-node-exporter
+        permissions: '0644'
+        content: |
+          # prometheus-node-exporter configuration
+          # Command-line arguments for node_exporter
+
+          ARGS="--web.listen-address=:9100"
+
+          # Collectors enabled by default, add --no-collector.<name> to disable
+          # Available collectors: arp, bcache, bonding, btrfs, conntrack, cpu,
+          # cpufreq, diskstats, dmi, edac, entropy, fibrechannel, filefd,
+          # filesystem, hwmon, infiniband, ipvs, loadavg, mdadm, meminfo,
+          # netclass, netdev, netstat, nfs, nfsd, nvme, os, powersupply,
+          # pressure, rapl, schedstat, selinux, sockstat, softnet, stat,
+          # tapestats, textfile, thermal_zone, time, timex, udp_queues, uname,
+          # vmstat, xfs, zfs
+
+          # Example: disable certain collectors
+          # ARGS="$ARGS --no-collector.arp --no-collector.infiniband"
+
+          # Enable textfile collector for custom metrics
+          # ARGS="$ARGS --collector.textfile.directory=/var/lib/prometheus/node-exporter"
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Prometheus Node Exporter Appliance
+            Incus Appliance Registry
+          =====================================================
+            Metrics: http://<ip>:9100/metrics
+            Config:  /etc/default/prometheus-node-exporter
+            Status:  systemctl status prometheus-node-exporter
+          =====================================================
+
+          Quick test:
+            curl -s localhost:9100/metrics | head -20
+
+          Add to Prometheus scrape config:
+            - job_name: 'node'
+              static_configs:
+                - targets: ['<container-ip>:9100']
+
+          Supports cloud-init for automated configuration.
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    runcmd:
+      # Create textfile collector directory for custom metrics
+      - mkdir -p /var/lib/prometheus/node-exporter
+      - chown prometheus:prometheus /var/lib/prometheus/node-exporter
+      # Enable node-exporter at boot
+      - systemctl enable prometheus-node-exporter
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

@@ -1,0 +1,58 @@
+# appliance.yaml - Appliance metadata
+name: node-exporter
+version: "1.5.0"
+description: "Prometheus node exporter for system metrics"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 32MB
+  min_disk: 64MB
+  recommended_memory: 64MB
+  recommended_disk: 128MB
+
+# Exposed ports (informational)
+ports:
+  - port: 9100
+    protocol: tcp
+    description: Metrics endpoint
+
+# Volumes that should be persisted
+volumes: []
+
+# Health check command
+healthcheck:
+  command: "curl -sf http://localhost:9100/metrics >/dev/null || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - monitoring
+  - metrics
+  - prometheus
+  - observability
+
+# Related appliances
+see_also:
+  - prometheus
+  - grafana

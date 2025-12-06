@@ -32,3 +32,7 @@ appliances:
   - name: mosquitto
     description: Eclipse Mosquitto MQTT broker for IoT messaging
     # Version: defined in appliances/mosquitto/appliance.yaml
+
+  - name: node-exporter
+    description: Prometheus node exporter for system metrics
+    # Version: defined in appliances/node-exporter/appliance.yaml
