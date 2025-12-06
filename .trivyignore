@@ -10,4 +10,9 @@
 # Example:
 # CVE-2023-12345  # Not applicable: feature not used in our configuration
 
-# Currently no CVEs are ignored
+# step-ca v0.29.0 false positives
+# CVE-2025-44005: Authorization Bypass in ACME and SCEP Provisioners
+# Fixed in v0.29.0 (GHSA-h8cp-697h-8c8p states vulnerable versions <= 0.28.4)
+# We use v0.29.0 which is the patched version - Trivy DB not yet updated
+# Revisit: Remove once Trivy database correctly identifies v0.29.0 as fixed
+CVE-2025-44005
