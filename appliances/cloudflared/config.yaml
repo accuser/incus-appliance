@@ -1,0 +1,135 @@
+# config.yaml - Incus cloud-init configuration for cloudflared appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - gnupg
+      - tzdata
+      # Networking
+      - iproute2
+      - iputils-ping
+
+    write_files:
+      - path: /etc/cloudflared/config.yml
+        permissions: '0600'
+        content: |
+          # Cloudflare Tunnel configuration
+          # This is a placeholder - configure via cloud-init or manually
+
+          # Tunnel token mode (recommended):
+          # Run with: cloudflared tunnel run --token <TOKEN>
+
+          # Or use credentials file mode:
+          # tunnel: <TUNNEL-UUID>
+          # credentials-file: /etc/cloudflared/credentials.json
+
+          # Ingress rules (when using config file mode):
+          # ingress:
+          #   - hostname: app.example.com
+          #     service: http://localhost:8080
+          #   - service: http_status:404
+
+      - path: /etc/systemd/system/cloudflared.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Cloudflare Tunnel
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=cloudflared
+          Group=cloudflared
+          ExecStart=/usr/local/bin/cloudflared tunnel run
+          Restart=on-failure
+          RestartSec=5
+          # Token is read from environment file
+          EnvironmentFile=-/etc/cloudflared/token.env
+
+          [Install]
+          WantedBy=multi-user.target
+
+      - path: /etc/systemd/system/cloudflared-token.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Cloudflare Tunnel (Token Mode)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=cloudflared
+          Group=cloudflared
+          ExecStart=/bin/bash -c '/usr/local/bin/cloudflared tunnel run --token "$TUNNEL_TOKEN"'
+          Restart=on-failure
+          RestartSec=5
+          EnvironmentFile=/etc/cloudflared/token.env
+
+          [Install]
+          WantedBy=multi-user.target
+
+      - path: /etc/cloudflared/token.env.example
+        permissions: '0600'
+        content: |
+          # Cloudflare Tunnel token
+          # Copy this file to /etc/cloudflared/token.env and add your token
+          # TUNNEL_TOKEN=eyJ...
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Cloudflare Tunnel Appliance
+            Incus Appliance Registry
+          =====================================================
+            Config: /etc/cloudflared/
+            Status: systemctl status cloudflared-token
+          =====================================================
+
+          Quick start with tunnel token:
+            1. Create a tunnel in Cloudflare Zero Trust dashboard
+            2. Copy the tunnel token
+            3. Configure the token:
+               echo "TUNNEL_TOKEN=eyJ..." > /etc/cloudflared/token.env
+               chmod 600 /etc/cloudflared/token.env
+            4. Start the service:
+               systemctl enable --now cloudflared-token
+
+          Or use cloud-init at launch time.
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    runcmd:
+      # Add Cloudflare GPG key and repository
+      - mkdir -p /usr/share/keyrings
+      - curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+      - echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main" > /etc/apt/sources.list.d/cloudflared.list
+      # Install cloudflared
+      - apt-get update
+      - apt-get install -y cloudflared
+      # Create cloudflared user
+      - useradd -r -s /usr/sbin/nologin -d /etc/cloudflared cloudflared || true
+      # Set permissions
+      - chown -R cloudflared:cloudflared /etc/cloudflared
+      # Reload systemd
+      - systemctl daemon-reload
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

@@ -1,0 +1,58 @@
+# appliance.yaml - Appliance metadata
+name: cloudflared
+version: "2025.11.1"
+description: "Cloudflare Tunnel client for secure tunneling"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 64MB
+  min_disk: 128MB
+  recommended_memory: 128MB
+  recommended_disk: 256MB
+
+# Exposed ports (informational)
+# cloudflared uses outbound connections only
+ports: []
+
+# Volumes that should be persisted
+volumes:
+  - path: /etc/cloudflared
+    description: "Configuration and credentials"
+
+# Health check command
+healthcheck:
+  command: "pgrep cloudflared >/dev/null || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - networking
+  - tunnel
+  - cloudflare
+  - reverse-proxy
+  - zero-trust
+
+# Related appliances
+see_also:
+  - nginx

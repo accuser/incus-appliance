@@ -36,3 +36,7 @@ appliances:
   - name: node-exporter
     description: Prometheus node exporter for system metrics
     # Version: defined in appliances/node-exporter/appliance.yaml
+
+  - name: cloudflared
+    description: Cloudflare Tunnel client for secure tunneling
+    # Version: defined in appliances/cloudflared/appliance.yaml
