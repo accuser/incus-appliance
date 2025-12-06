@@ -1,0 +1,165 @@
+name: Scheduled Base Image Check
+
+on:
+  schedule:
+    # Run weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if base image unchanged'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-base-image:
+    runs-on: self-hosted
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      fingerprint: ${{ steps.check.outputs.fingerprint }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check base image for updates
+        id: check
+        run: |
+          # Get the current remote image fingerprint
+          # Query the images.linuxcontainers.org server directly
+          BASE_IMAGE="images:debian/12/cloud"
+          ARCH="amd64"
+
+          echo "==> Checking base image: ${BASE_IMAGE}/${ARCH}"
+
+          # Fetch remote image fingerprint using incus
+          REMOTE_FINGERPRINT=$(sudo incus image info "${BASE_IMAGE}/${ARCH}" 2>/dev/null | grep "^Fingerprint:" | awk '{print $2}' || echo "")
+
+          if [[ -z "$REMOTE_FINGERPRINT" ]]; then
+            echo "Error: Could not determine remote image fingerprint"
+            exit 1
+          fi
+
+          echo "Remote fingerprint: ${REMOTE_FINGERPRINT:0:12}..."
+          echo "fingerprint=${REMOTE_FINGERPRINT}" >> $GITHUB_OUTPUT
+
+          # Check stored fingerprint
+          FINGERPRINT_FILE=".base-image-fingerprint"
+          if [[ -f "$FINGERPRINT_FILE" ]]; then
+            STORED_FINGERPRINT=$(cat "$FINGERPRINT_FILE")
+            echo "Stored fingerprint: ${STORED_FINGERPRINT:0:12}..."
+
+            if [[ "$REMOTE_FINGERPRINT" == "$STORED_FINGERPRINT" ]]; then
+              echo "==> Base image unchanged"
+              echo "changed=false" >> $GITHUB_OUTPUT
+            else
+              echo "==> Base image has been updated!"
+              echo "changed=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "==> No stored fingerprint (first run)"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check force rebuild flag
+        id: force
+        run: |
+          if [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
+            echo "Force rebuild requested"
+            echo "force=true" >> $GITHUB_OUTPUT
+          else
+            echo "force=false" >> $GITHUB_OUTPUT
+          fi
+
+  create-rebuild-pr:
+    needs: check-base-image
+    if: needs.check-base-image.outputs.changed == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update fingerprint file
+        run: |
+          echo "${{ needs.check-base-image.outputs.fingerprint }}" > .base-image-fingerprint
+          echo "Updated fingerprint to: ${{ needs.check-base-image.outputs.fingerprint }}"
+
+      - name: Get base image details
+        id: details
+        run: |
+          # Get current date for branch name
+          DATE=$(date +%Y%m%d)
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+
+          # Short fingerprint for display
+          SHORT_FP="${{ needs.check-base-image.outputs.fingerprint }}"
+          SHORT_FP="${SHORT_FP:0:12}"
+          echo "short_fingerprint=${SHORT_FP}" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update base image fingerprint to ${{ steps.details.outputs.short_fingerprint }}"
+          title: "chore: rebuild appliances with updated base image"
+          body: |
+            ## Base Image Update Detected
+
+            The upstream base image `images:debian/12/cloud` has been updated.
+
+            **New fingerprint:** `${{ needs.check-base-image.outputs.fingerprint }}`
+
+            ### What this PR does
+
+            1. Updates the stored base image fingerprint
+            2. When merged, triggers a full rebuild of all appliances with the latest base image
+
+            ### Why rebuild?
+
+            The base image from [images.linuxcontainers.org](https://images.linuxcontainers.org/) is rebuilt regularly with:
+            - Latest security patches
+            - Updated system packages
+            - Kernel updates
+
+            Rebuilding appliances ensures they include these updates.
+
+            ### Debian Security Resources
+
+            - [Debian Security Tracker](https://security-tracker.debian.org/tracker/)
+            - [Debian Security Announcements](https://www.debian.org/security/)
+
+            ---
+            *This PR was automatically created by the scheduled base image check workflow.*
+          branch: "chore/base-image-update-${{ steps.details.outputs.date }}"
+          delete-branch: true
+          labels: |
+            automated
+            security
+            base-image-update
+
+  notify-no-change:
+    needs: check-base-image
+    if: needs.check-base-image.outputs.changed == 'false' && github.event.inputs.force_rebuild != 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Log status
+        run: |
+          echo "Base image unchanged - no rebuild needed"
+          echo "Current fingerprint: ${{ needs.check-base-image.outputs.fingerprint }}"
+
+      - name: Create summary
+        run: |
+          echo "## Base Image Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **No changes detected** - base image is up to date." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Current fingerprint:** \`${{ needs.check-base-image.outputs.fingerprint }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No rebuild is necessary at this time." >> $GITHUB_STEP_SUMMARY
