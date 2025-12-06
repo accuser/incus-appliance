@@ -28,3 +28,7 @@ appliances:
   - name: atlantis
     description: Terraform/OpenTofu Pull Request automation for GitOps
     # Version: defined in appliances/atlantis/appliance.yaml
+
+  - name: mosquitto
+    description: Eclipse Mosquitto MQTT broker for IoT messaging
+    # Version: defined in appliances/mosquitto/appliance.yaml

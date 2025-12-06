@@ -1,0 +1,148 @@
+# config.yaml - Incus cloud-init configuration for Mosquitto appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Mosquitto
+      - mosquitto
+      - mosquitto-clients
+
+    write_files:
+      - path: /etc/mosquitto/conf.d/appliance.conf
+        permissions: '0644'
+        content: |
+          # Mosquitto appliance configuration
+          # This file is loaded automatically from conf.d/
+
+          # Listen on all interfaces
+          listener 1883 0.0.0.0
+
+          # Allow anonymous connections by default
+          # For production, set to false and configure authentication
+          allow_anonymous true
+
+          # Persistence
+          persistence true
+          persistence_location /var/lib/mosquitto/
+
+          # Logging
+          log_dest file /var/log/mosquitto/mosquitto.log
+          log_type error
+          log_type warning
+          log_type notice
+          log_type information
+          log_timestamp true
+          log_timestamp_format %Y-%m-%dT%H:%M:%S
+
+          # Connection settings
+          max_connections -1
+          max_keepalive 65535
+
+          # Message settings
+          max_inflight_messages 20
+          max_queued_messages 1000
+          message_size_limit 0
+
+      - path: /etc/mosquitto/conf.d/websockets.conf.disabled
+        permissions: '0644'
+        content: |
+          # WebSocket listener (disabled by default)
+          # Rename to websockets.conf to enable
+          listener 9001 0.0.0.0
+          protocol websockets
+
+      - path: /etc/mosquitto/conf.d/tls.conf.disabled
+        permissions: '0644'
+        content: |
+          # TLS listener (disabled by default)
+          # Rename to tls.conf and provide certificates to enable
+          listener 8883 0.0.0.0
+          cafile /etc/mosquitto/certs/ca.crt
+          certfile /etc/mosquitto/certs/server.crt
+          keyfile /etc/mosquitto/certs/server.key
+          require_certificate false
+
+      - path: /etc/mosquitto/conf.d/auth.conf.disabled
+        permissions: '0644'
+        content: |
+          # Password authentication (disabled by default)
+          # Rename to auth.conf and create password file to enable
+          allow_anonymous false
+          password_file /etc/mosquitto/passwd
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Mosquitto MQTT Broker Appliance
+            Incus Appliance Registry
+          =====================================================
+            Data:   /var/lib/mosquitto/
+            Config: /etc/mosquitto/
+            Logs:   /var/log/mosquitto/
+            Status: systemctl status mosquitto
+          =====================================================
+
+          Default: Anonymous connections allowed on port 1883.
+
+          Quick test:
+            mosquitto_sub -t 'test/#' -v &
+            mosquitto_pub -t 'test/hello' -m 'world'
+
+          Add authentication:
+            mosquitto_passwd -c /etc/mosquitto/passwd username
+            mv /etc/mosquitto/conf.d/auth.conf.disabled /etc/mosquitto/conf.d/auth.conf
+            systemctl restart mosquitto
+
+          Supports cloud-init for automated configuration.
+
+      - path: /etc/logrotate.d/mosquitto
+        permissions: '0644'
+        content: |
+          /var/log/mosquitto/*.log {
+              daily
+              missingok
+              rotate 14
+              compress
+              delaycompress
+              notifempty
+              create 0640 mosquitto mosquitto
+              sharedscripts
+              postrotate
+                  systemctl reload mosquitto > /dev/null 2>&1 || true
+              endscript
+          }
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+    runcmd:
+      # Ensure directories exist with correct permissions
+      - mkdir -p /var/lib/mosquitto /var/log/mosquitto /etc/mosquitto/certs
+      - chown -R mosquitto:mosquitto /var/lib/mosquitto
+      - chown -R mosquitto:mosquitto /var/log/mosquitto
+      - chown -R mosquitto:mosquitto /etc/mosquitto/certs
+      # Enable mosquitto at boot
+      - systemctl enable mosquitto
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

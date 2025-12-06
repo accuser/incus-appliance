@@ -1,0 +1,70 @@
+# appliance.yaml - Appliance metadata
+name: mosquitto
+version: "2.0.11"
+description: "Eclipse Mosquitto MQTT broker with cloud-init support"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 64MB
+  min_disk: 128MB
+  recommended_memory: 256MB
+  recommended_disk: 512MB
+
+# Exposed ports (informational)
+ports:
+  - port: 1883
+    protocol: tcp
+    description: MQTT
+  - port: 8883
+    protocol: tcp
+    description: MQTT over TLS
+  - port: 9001
+    protocol: tcp
+    description: WebSocket (optional)
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/mosquitto
+    description: "Persistent data and message store"
+  - path: /var/log/mosquitto
+    description: "Log files"
+  - path: /etc/mosquitto
+    description: "Configuration files"
+
+# Health check command
+healthcheck:
+  command: "mosquitto_sub -t '$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1 || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - messaging
+  - mqtt
+  - iot
+  - broker
+  - pubsub
+
+# Related appliances
+see_also:
+  - redis

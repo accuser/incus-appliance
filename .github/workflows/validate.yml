@@ -68,7 +68,7 @@ jobs:
 
       - name: Build appliance
         run: |
-          make build-${{ matrix.appliance }}
+          ./bin/build-appliance.sh ${{ matrix.appliance }}
 
       - name: Fix ownership
         run: |
