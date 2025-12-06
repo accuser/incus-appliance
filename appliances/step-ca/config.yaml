@@ -1,0 +1,222 @@
+# config.yaml - Incus cloud-init configuration for step-ca appliance
+# This file configures the container using cloud-init
+
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: false
+
+    packages:
+      # Base system
+      - ca-certificates
+      - curl
+      - tzdata
+      - logrotate
+      # Networking
+      - iproute2
+      - iputils-ping
+      # Utilities
+      - jq
+
+    # Create step user before writing files
+    users:
+      - name: step
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/step-ca
+        no_create_home: true
+
+    write_files:
+      - path: /etc/systemd/system/step-ca.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Smallstep CA
+          Documentation=https://smallstep.com/docs/step-ca
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=step
+          Group=step
+          Environment=STEPPATH=/var/lib/step-ca
+          ExecStart=/usr/local/bin/step-ca /var/lib/step-ca/config/ca.json --password-file=/var/lib/step-ca/secrets/password.txt
+          ExecReload=/bin/kill -HUP $MAINPID
+          Restart=on-failure
+          RestartSec=5
+          LimitNOFILE=65536
+
+          # Security hardening
+          NoNewPrivileges=yes
+          ProtectSystem=strict
+          ProtectHome=yes
+          ReadWritePaths=/var/lib/step-ca
+
+          # Allow binding to privileged ports
+          AmbientCapabilities=CAP_NET_BIND_SERVICE
+          CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+          [Install]
+          WantedBy=multi-user.target
+
+      - path: /etc/motd
+        permissions: '0644'
+        content: |
+          =====================================================
+            Smallstep step-ca Appliance
+            Incus Appliance Registry
+          =====================================================
+            ACME:    https://<ip>/acme/acme/directory
+            Admin:   https://<ip>:9000 (if enabled)
+            Config:  /var/lib/step-ca/config/ca.json
+            Certs:   /var/lib/step-ca/certs/
+            Status:  systemctl status step-ca
+          =====================================================
+
+          IMPORTANT: This CA has been initialized with default settings.
+          For production use, you should:
+            1. Back up /var/lib/step-ca/secrets/ securely
+            2. Review and customize the CA configuration
+            3. Consider using an HSM for key storage
+
+          Quick test:
+            step ca health --ca-url=https://localhost --root=/var/lib/step-ca/certs/root_ca.crt
+
+          Get a certificate:
+            step ca certificate myserver.local server.crt server.key \
+              --ca-url=https://<ip> --root=/var/lib/step-ca/certs/root_ca.crt
+
+          Supports cloud-init for automated configuration.
+
+      - path: /etc/logrotate.d/step-ca
+        permissions: '0644'
+        content: |
+          /var/log/step-ca/*.log {
+              daily
+              missingok
+              rotate 14
+              compress
+              delaycompress
+              notifempty
+              create 0640 step step
+          }
+
+      - path: /etc/cloud/cloud.cfg.d/99-incus.cfg
+        permissions: '0644'
+        content: |
+          # Incus/LXD datasource configuration
+          datasource_list: [LXD]
+          datasource:
+            LXD:
+              apply_network_config: true
+
+      - path: /usr/local/bin/install-step.sh
+        permissions: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+
+          VERSION="0.29.0"
+          ARCH=$(dpkg --print-architecture)
+
+          # Map architecture names
+          case "${ARCH}" in
+              amd64) STEP_ARCH="amd64" ;;
+              arm64) STEP_ARCH="arm64" ;;
+              *) echo "Unsupported architecture: ${ARCH}"; exit 1 ;;
+          esac
+
+          echo "Installing step-ca ${VERSION} for ${STEP_ARCH}..."
+
+          cd /tmp
+
+          # Download and install step-ca
+          curl -fsSL -o step-ca.tar.gz "https://github.com/smallstep/certificates/releases/download/v${VERSION}/step-ca_linux_${VERSION}_${STEP_ARCH}.tar.gz"
+          tar -xzf step-ca.tar.gz
+          mv step-ca /usr/local/bin/
+          chmod +x /usr/local/bin/step-ca
+          rm -f step-ca.tar.gz
+
+          # Download and install step CLI
+          CLI_VERSION="0.28.6"
+          curl -fsSL -o step.tar.gz "https://github.com/smallstep/cli/releases/download/v${CLI_VERSION}/step_linux_${CLI_VERSION}_${STEP_ARCH}.tar.gz"
+          tar -xzf step.tar.gz
+          mv step_${CLI_VERSION}/bin/step /usr/local/bin/
+          chmod +x /usr/local/bin/step
+          rm -rf step.tar.gz step_${CLI_VERSION}
+
+          echo "step-ca ${VERSION} and step CLI ${CLI_VERSION} installed successfully"
+
+      - path: /usr/local/bin/init-step-ca.sh
+        permissions: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+
+          STEPPATH="/var/lib/step-ca"
+          export STEPPATH
+
+          # Check if already initialized
+          if [[ -f "${STEPPATH}/config/ca.json" ]]; then
+              echo "step-ca already initialized, skipping..."
+              exit 0
+          fi
+
+          echo "Initializing step-ca..."
+
+          # Get hostname for CA name
+          CA_NAME="${STEP_CA_NAME:-Incus Appliance CA}"
+          DNS_NAME="${STEP_CA_DNS:-localhost}"
+          ADDRESS="${STEP_CA_ADDRESS:-:443}"
+
+          # Generate a random password if not provided
+          if [[ ! -f "${STEPPATH}/secrets/password.txt" ]]; then
+              mkdir -p "${STEPPATH}/secrets"
+              openssl rand -base64 32 > "${STEPPATH}/secrets/password.txt"
+              chmod 600 "${STEPPATH}/secrets/password.txt"
+          fi
+
+          PASSWORD=$(cat "${STEPPATH}/secrets/password.txt")
+
+          # Initialize the CA
+          step ca init \
+              --name="${CA_NAME}" \
+              --dns="${DNS_NAME}" \
+              --address="${ADDRESS}" \
+              --provisioner="admin" \
+              --password-file="${STEPPATH}/secrets/password.txt" \
+              --provisioner-password-file="${STEPPATH}/secrets/password.txt"
+
+          # Add ACME provisioner
+          step ca provisioner add acme --type ACME
+
+          # Set ownership
+          chown -R step:step "${STEPPATH}"
+
+          echo "step-ca initialized successfully!"
+          echo "Root CA: ${STEPPATH}/certs/root_ca.crt"
+          echo "Password stored in: ${STEPPATH}/secrets/password.txt"
+
+    runcmd:
+      # Create directories
+      - mkdir -p /var/lib/step-ca/config
+      - mkdir -p /var/lib/step-ca/certs
+      - mkdir -p /var/lib/step-ca/secrets
+      - mkdir -p /var/lib/step-ca/db
+      - mkdir -p /var/lib/step-ca/templates
+      - mkdir -p /var/log/step-ca
+      # Install step-ca and step CLI
+      - /usr/local/bin/install-step.sh
+      # Initialize CA with defaults
+      - /usr/local/bin/init-step-ca.sh
+      # Set ownership
+      - chown -R step:step /var/lib/step-ca
+      - chown -R step:step /var/log/step-ca
+      # Enable service
+      - systemctl daemon-reload
+      - systemctl enable step-ca
+      # Disable unnecessary services for containers
+      - systemctl disable apt-daily.timer || true
+      - systemctl disable apt-daily-upgrade.timer || true

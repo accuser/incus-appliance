@@ -1,0 +1,65 @@
+# appliance.yaml - Appliance metadata
+name: step-ca
+version: "0.29.0"
+description: "Smallstep step-ca private certificate authority"
+maintainer: "Incus Appliance Registry"
+
+# Supported architectures
+architectures:
+  - amd64
+  - arm64
+
+# Supported instance types
+types:
+  - container
+
+# Base distribution
+base:
+  distribution: debian
+  release: bookworm
+
+# cloud-init support
+cloud_init: true
+
+# Resource requirements (informational)
+requirements:
+  min_cpu: 1
+  min_memory: 256MB
+  min_disk: 1GB
+  recommended_memory: 512MB
+  recommended_disk: 5GB
+
+# Exposed ports (informational)
+ports:
+  - port: 443
+    protocol: tcp
+    description: HTTPS/ACME endpoint
+  - port: 9000
+    protocol: tcp
+    description: Admin API (optional)
+
+# Volumes that should be persisted
+volumes:
+  - path: /var/lib/step-ca
+    description: "CA database, certificates, and keys"
+
+# Health check command
+healthcheck:
+  command: "curl -sf https://localhost/health --cacert /var/lib/step-ca/certs/root_ca.crt >/dev/null || exit 1"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+# Tags for filtering
+tags:
+  - security
+  - pki
+  - certificates
+  - acme
+  - tls
+  - ca
+
+# Related appliances
+see_also:
+  - nginx
+  - cloudflared
