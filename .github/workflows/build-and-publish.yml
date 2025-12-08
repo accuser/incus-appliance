@@ -447,9 +447,10 @@ jobs:
 
             ${{ steps.changelog.outputs.changelog }}
 
-  publish:
+  # Publish full registry to Cloudflare R2 (optional, enabled via R2_ENABLED variable)
+  publish-r2:
     needs: [generate-matrix, build]
-    if: needs.generate-matrix.outputs.has_builds == 'true'
+    if: needs.generate-matrix.outputs.has_builds == 'true' && vars.R2_ENABLED == 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -463,30 +464,46 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 10
           command: |
-            sudo apt-get update && sudo apt-get install -y jq
+            sudo apt-get update && sudo apt-get install -y jq rclone
             sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
             sudo chmod +x /usr/local/bin/yq
 
-      - name: Download existing registry from GitHub Pages
+      - name: Configure rclone for R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
-          REGISTRY_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          mkdir -p existing-registry/streams/v1
-          mkdir -p existing-registry/images
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${R2_ACCESS_KEY_ID}
+          secret_access_key = ${R2_SECRET_ACCESS_KEY}
+          endpoint = https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+          acl = private
+          EOF
+          chmod 600 ~/.config/rclone/rclone.conf
 
-          # Try to fetch existing images.json (may not exist on first run)
+      - name: Download existing registry from R2
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'incus-appliance' }}
+        run: |
+          mkdir -p existing-registry/streams/v1
           EMPTY_REGISTRY='{"content_id": "images", "datatype": "image-downloads", "format": "products:1.0", "products": {}}'
 
-          if curl -sf "${REGISTRY_URL}/streams/v1/images.json" -o existing-registry/streams/v1/images.json; then
-            # Verify it's valid JSON
+          # Try to fetch existing images.json from R2
+          if rclone copy "r2:${R2_BUCKET}/streams/v1/images.json" existing-registry/streams/v1/ 2>/dev/null; then
             if jq empty existing-registry/streams/v1/images.json 2>/dev/null; then
-              echo "Downloaded existing images.json"
+              echo "Downloaded existing images.json from R2"
               jq '.products | keys' existing-registry/streams/v1/images.json
             else
               echo "Downloaded file is not valid JSON - starting fresh"
               echo "$EMPTY_REGISTRY" > existing-registry/streams/v1/images.json
             fi
           else
-            echo "No existing registry found - starting fresh"
+            echo "No existing registry found in R2 - starting fresh"
             echo "$EMPTY_REGISTRY" > existing-registry/streams/v1/images.json
           fi
 
@@ -511,33 +528,37 @@ jobs:
           jq '.products | keys' merged-registry/streams/v1/images.json
 
           # Merge all registry artifacts
-          for reg_dir in registries/registry-*; do
-            echo "==> Processing $reg_dir"
-            ls -la "$reg_dir" || true
+          if compgen -G "registries/registry-*" > /dev/null; then
+            for reg_dir in registries/registry-*; do
+              echo "==> Processing $reg_dir"
+              ls -la "$reg_dir" || true
 
-            # Find the images.json file
-            IMAGES_JSON=""
-            if [ -f "$reg_dir/registry/streams/v1/images.json" ]; then
-              IMAGES_JSON="$reg_dir/registry/streams/v1/images.json"
-            elif [ -f "$reg_dir/streams/v1/images.json" ]; then
-              IMAGES_JSON="$reg_dir/streams/v1/images.json"
-            fi
+              # Find the images.json file
+              IMAGES_JSON=""
+              if [ -f "$reg_dir/registry/streams/v1/images.json" ]; then
+                IMAGES_JSON="$reg_dir/registry/streams/v1/images.json"
+              elif [ -f "$reg_dir/streams/v1/images.json" ]; then
+                IMAGES_JSON="$reg_dir/streams/v1/images.json"
+              fi
 
-            if [ -n "$IMAGES_JSON" ] && [ -f "$IMAGES_JSON" ]; then
-              echo "  Merging images.json from $IMAGES_JSON"
-              # Merge products from this images.json into the merged one
-              jq -s '.[0].products * .[1].products | {content_id: "images", datatype: "image-downloads", format: "products:1.0", products: .}' \
-                merged-registry/streams/v1/images.json "$IMAGES_JSON" > merged-registry/streams/v1/images.json.tmp
-              mv merged-registry/streams/v1/images.json.tmp merged-registry/streams/v1/images.json
-            fi
+              if [ -n "$IMAGES_JSON" ] && [ -f "$IMAGES_JSON" ]; then
+                echo "  Merging images.json from $IMAGES_JSON"
+                # Merge products from this images.json into the merged one
+                jq -s '.[0].products * .[1].products | {content_id: "images", datatype: "image-downloads", format: "products:1.0", products: .}' \
+                  merged-registry/streams/v1/images.json "$IMAGES_JSON" > merged-registry/streams/v1/images.json.tmp
+                mv merged-registry/streams/v1/images.json.tmp merged-registry/streams/v1/images.json
+              fi
 
-            # Copy image files
-            if [ -d "$reg_dir/registry/images" ]; then
-              cp -r "$reg_dir/registry/images"/* merged-registry/images/ 2>/dev/null || true
-            elif [ -d "$reg_dir/images" ]; then
-              cp -r "$reg_dir/images"/* merged-registry/images/ 2>/dev/null || true
-            fi
-          done
+              # Copy image files
+              if [ -d "$reg_dir/registry/images" ]; then
+                cp -r "$reg_dir/registry/images"/* merged-registry/images/ 2>/dev/null || true
+              elif [ -d "$reg_dir/images" ]; then
+                cp -r "$reg_dir/images"/* merged-registry/images/ 2>/dev/null || true
+              fi
+            done
+          else
+            echo "No registry artifacts found"
+          fi
 
           # Generate index.json with products array (required by Incus simplestreams client)
           # The products array must list all product keys from images.json
@@ -789,17 +810,124 @@ jobs:
           echo "==> Final registry structure:"
           find merged-registry -type f
 
+      - name: Sync to Cloudflare R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'incus-appliance' }}
+          REGISTRY_DIR: merged-registry
+        run: ./scripts/sync-r2.sh
+
+  # Publish landing page to GitHub Pages (points to R2 registry)
+  # Only runs when R2 is enabled - the landing page directs users to R2
+  publish-pages:
+    needs: [generate-matrix, publish-r2]
+    if: needs.generate-matrix.outputs.has_builds == 'true' && vars.R2_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 10
+          command: |
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+
+      - name: Generate landing page
+        run: |
+          REGISTRY_URL="${{ vars.R2_PUBLIC_URL || format('https://{0}.r2.dev', vars.R2_BUCKET || 'incus-appliance') }}"
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          mkdir -p pages
+
+          # Generate appliance list
+          APPLIANCE_HTML=""
+          for appliance in $(yq -r '.appliances[] | select(.enabled != false) | .name' appliances.yaml); do
+            version=$(yq -r '.version // "0.0.0"' "appliances/${appliance}/appliance.yaml" 2>/dev/null || echo "0.0.0")
+            description=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .description // \"Appliance\"" appliances.yaml)
+            archs=$(yq -r ".appliances[] | select(.name == \"${appliance}\") | .architectures // [\"amd64\", \"arm64\"] | join(\", \")" appliances.yaml)
+            APPLIANCE_HTML="${APPLIANCE_HTML}<tr><td><strong>${appliance}</strong></td><td>v${version}</td><td>${description}</td><td>${archs}</td></tr>"
+          done
+
+          # Generate main landing page
+          cat > pages/index.html <<EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Incus Appliance Registry</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+              h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+              h2 { margin-top: 30px; color: #333; }
+              table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+              th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+              th { background: #f5f5f5; font-weight: 600; }
+              tr:hover { background: #f9f9f9; }
+              pre { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 8px; overflow-x: auto; }
+              code { font-family: 'Monaco', 'Menlo', monospace; }
+              .highlight { color: #9cdcfe; }
+              .comment { color: #6a9955; }
+              a { color: #0066cc; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em; }
+              .badge { display: inline-block; background: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>Incus Appliance Registry <span class="badge">SimpleStreams</span></h1>
+            <p>Pre-configured system container appliances for <a href="https://linuxcontainers.org/incus/">Incus</a>. Launch production-ready services with a single command.</p>
+
+            <h2>Quick Start</h2>
+            <pre><code><span class="comment"># Add the registry</span>
+          incus remote add appliance <span class="highlight">${REGISTRY_URL}</span> --protocol simplestreams
+
+          <span class="comment"># Launch an appliance</span>
+          incus launch appliance:nginx my-nginx
+
+          <span class="comment"># List available images</span>
+          incus image list appliance:</code></pre>
+
+            <h2>Available Appliances</h2>
+            <table>
+              <tr><th>Name</th><th>Version</th><th>Description</th><th>Architectures</th></tr>
+          ${APPLIANCE_HTML}
+            </table>
+
+            <h2>Registry URL</h2>
+            <p>The SimpleStreams registry is hosted at:</p>
+            <pre><code>${REGISTRY_URL}</code></pre>
+
+            <h2>Documentation</h2>
+            <p>For detailed documentation, appliance configurations, and contribution guidelines, see the <a href="https://github.com/${{ github.repository }}">GitHub repository</a>.</p>
+
+            <div class="footer">
+              <p>Last updated: ${BUILD_DATE}</p>
+              <p>Powered by <a href="https://www.cloudflare.com/products/r2/">Cloudflare R2</a> | Source on <a href="https://github.com/${{ github.repository }}">GitHub</a></p>
+            </div>
+          </body>
+          </html>
+          EOF
+
+          echo "==> Generated landing page"
+
       - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: merged-registry/
+          path: pages/
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
   summary:
-    needs: [generate-matrix, release, publish]
+    needs: [generate-matrix, release]
     runs-on: ubuntu-24.04
     if: always() && needs.generate-matrix.result == 'success'
 
