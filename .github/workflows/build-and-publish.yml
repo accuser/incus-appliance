@@ -447,10 +447,10 @@ jobs:
 
             ${{ steps.changelog.outputs.changelog }}
 
-  # Publish full registry to Cloudflare R2 (primary storage)
+  # Publish full registry to Cloudflare R2 (optional, enabled via R2_ENABLED variable)
   publish-r2:
     needs: [generate-matrix, build]
-    if: needs.generate-matrix.outputs.has_builds == 'true'
+    if: needs.generate-matrix.outputs.has_builds == 'true' && vars.R2_ENABLED == 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -468,14 +468,12 @@ jobs:
             sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
             sudo chmod +x /usr/local/bin/yq
 
-      - name: Download existing registry from R2
+      - name: Configure rclone for R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ vars.R2_BUCKET || 'incus-appliance' }}
         run: |
-          # Configure rclone
           mkdir -p ~/.config/rclone
           cat > ~/.config/rclone/rclone.conf <<EOF
           [r2]
@@ -488,6 +486,10 @@ jobs:
           EOF
           chmod 600 ~/.config/rclone/rclone.conf
 
+      - name: Download existing registry from R2
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'incus-appliance' }}
+        run: |
           mkdir -p existing-registry/streams/v1
           EMPTY_REGISTRY='{"content_id": "images", "datatype": "image-downloads", "format": "products:1.0", "products": {}}'
 
@@ -818,9 +820,10 @@ jobs:
         run: ./scripts/sync-r2.sh
 
   # Publish landing page to GitHub Pages (points to R2 registry)
+  # Only runs when R2 is enabled - the landing page directs users to R2
   publish-pages:
     needs: [generate-matrix, publish-r2]
-    if: needs.generate-matrix.outputs.has_builds == 'true'
+    if: needs.generate-matrix.outputs.has_builds == 'true' && vars.R2_ENABLED == 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -924,7 +927,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
   summary:
-    needs: [generate-matrix, release, publish-r2, publish-pages]
+    needs: [generate-matrix, release]
     runs-on: ubuntu-24.04
     if: always() && needs.generate-matrix.result == 'success'
 

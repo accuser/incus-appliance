@@ -110,11 +110,11 @@ incus remote add appliance https://appliances.example.com --protocol simplestrea
 
 ## Migration Strategy
 
-The workflow publishes to **both** GitHub Pages and R2 simultaneously. This allows:
+When R2 is enabled, the workflow publishes the **full registry to R2** and a **landing page to GitHub Pages** that points users to R2. This allows:
 
-1. **Gradual migration**: Test R2 while keeping GitHub Pages working
-2. **Rollback option**: If R2 has issues, users can fall back to GitHub Pages
-3. **Zero downtime**: Switch DNS when ready
+1. **Gradual migration**: Test R2 while keeping a presence on GitHub Pages
+2. **Zero downtime**: The landing page provides instructions for the new registry URL
+3. **Simple rollback**: Disable R2 to restore full GitHub Pages publishing
 
 ## Cost Estimation
 
@@ -135,6 +135,7 @@ To disable R2 publishing:
 
 1. Set `R2_ENABLED` variable to `false` (or delete it)
 2. The `publish-r2` job will be skipped
+3. The full registry will be published to GitHub Pages instead
 
 ## Troubleshooting
 

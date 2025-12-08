@@ -34,8 +34,13 @@ check_requirements() {
     fi
 }
 
-# Configure rclone for R2
+# Configure rclone for R2 (skip if already configured)
 configure_rclone() {
+    if [[ -f ~/.config/rclone/rclone.conf ]] && grep -q "^\[r2\]" ~/.config/rclone/rclone.conf 2>/dev/null; then
+        log_info "rclone already configured, skipping"
+        return
+    fi
+
     log_info "Configuring rclone for Cloudflare R2..."
 
     # Create rclone config
